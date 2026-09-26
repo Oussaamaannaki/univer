@@ -18,8 +18,13 @@ window.HORAIRES_CONFIG = {
 
   // Bouton « Continuer avec Google » (activer Google dans Firebase > Authentication)
   googleSignIn: true,
-  // Adresse du site : la connexion Google de l'app installée passe par ce domaine (voir vercel.json)
+  // App installée sur l'écran d'accueil : bouton Google seulement si l'adresse de redirection est ajoutée
+  // dans Google Cloud (voir GUIDE.md). Sinon, courriel + mot de passe.
+  googleInstalledApp: false,
   authProxyHost: 'miniso-cah5-granby.vercel.app',
+
+  // Compte technique qui envoie les notifications (caché dans l'équipe, approuvé automatiquement)
+  robotUid: 'jc7jc1OeqhhcvQgwBLY731qyy5h2',
 
   store: { code: 'CAH5', name: 'Galeries de Granby' },
 

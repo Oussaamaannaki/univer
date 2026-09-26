@@ -1,0 +1,11 @@
+name: Rappels de quarts
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+jobs:
+  rappels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: curl -sS --max-time 60 https://miniso-cah5-granby.vercel.app/api/reminders

@@ -79,7 +79,7 @@ let auth = null, db = null;
 const standaloneMode = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 if (configured) {
   const fbConf = { ...C.firebase };
-  if (standaloneMode && C.authProxyHost && location.host === C.authProxyHost) fbConf.authDomain = C.authProxyHost;
+  if (standaloneMode && C.googleInstalledApp && C.authProxyHost && location.host === C.authProxyHost) fbConf.authDomain = C.authProxyHost;
   const app = initializeApp(fbConf);
   // Session conservée sur l'appareil jusqu'à « Se déconnecter » (aucune expiration automatique)
   auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence], popupRedirectResolver: browserPopupRedirectResolver });
@@ -147,7 +147,9 @@ const fullName = u => u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : ''
 const shortName = u => u ? `${u.firstName || ''}${u.lastName ? ' ' + u.lastName.charAt(0) + '.' : ''}` : '';
 const nameOf = id => { if (S.user && id === S.user.uid) return 'vous'; const u = userById(id); return u ? shortName(u) : 'un collègue'; };
 const initials = u => ((u?.firstName || '?').charAt(0) + (u?.lastName || '').charAt(0)).toUpperCase();
-const activeUsers = () => S.users.filter(u => u.status === 'active').sort((a, b) => fullName(a).localeCompare(fullName(b), 'fr'));
+const isRobot = u => !!u && (u.id === C.robotUid || u.position === '__system');
+const realUsers = () => S.users.filter(u => !isRobot(u));
+const activeUsers = () => realUsers().filter(u => u.status === 'active').sort((a, b) => fullName(a).localeCompare(fullName(b), 'fr'));
 const posOf = id => S.settings.positions.find(p => p.id === id) || { id: '', name: 'Sans poste', color: '#8A817E' };
 const offsFor = uid => S.timeoff.filter(o => o.uid === uid && (o.status === 'approved' || o.status === 'pending'));
 const defaultAvail = () => ({ days: Object.fromEntries(Array.from({ length: 7 }, (_, i) => [i, { type: 'all', from: '09:00', to: '17:00' }])), maxHours: '', note: '' });
@@ -219,7 +221,13 @@ async function onProfile() {
 }
 function startAppSubs() {
   const me = S.user.uid, mgr = isManager();
-  sub('users', () => onSnapshot(mgr ? collection(db, 'users') : query(collection(db, 'users'), where('status', '==', 'active')), snap => { S.users = docsOf(snap); render(); }, onErr('users')));
+  sub('users', () => onSnapshot(mgr ? collection(db, 'users') : query(collection(db, 'users'), where('status', '==', 'active')), snap => {
+    S.users = docsOf(snap);
+    // Compte technique des notifications : activé automatiquement par la direction
+    const bot = mgr && C.robotUid && S.users.find(u => u.id === C.robotUid && u.status === 'pending');
+    if (bot && !S.botApproving) { S.botApproving = true; updateDoc(doc(db, 'users', bot.id), { status: 'active', updatedAt: nowISO() }).catch(e => console.warn('robot', e.code)).finally(() => { S.botApproving = false; }); }
+    render();
+  }, onErr('users')));
   sub('settings', () => onSnapshot(doc(db, 'settings', 'store'), snap => { S.settings = { ...DEFAULT_SETTINGS, ...(snap.exists() ? snap.data() : {}) }; render(); }, onErr('settings')));
   sub('swaps', () => onSnapshot(query(collection(db, 'swaps'), where('status', 'in', ['open', 'taken'])), snap => { S.swaps = docsOf(snap); S.swapConf = {}; render(); }, onErr('swaps')));
   sub('swapsFrom', () => onSnapshot(query(collection(db, 'swaps'), where('fromUid', '==', me)), snap => { S.swapsFrom = docsOf(snap); render(); }, onErr('swapsFrom')));
@@ -372,14 +380,14 @@ function navBadges() {
   const me = S.user.uid;
   if (isManager()) return {
     requests: S.timeoff.filter(o => o.status === 'pending').length + S.swaps.filter(x => x.status === 'taken').length,
-    staff: S.users.filter(u => u.status === 'pending').length
+    staff: realUsers().filter(u => u.status === 'pending').length
   };
   return { swaps: S.swaps.filter(x => x.status === 'open' && x.fromUid !== me && (!x.toUid || x.toUid === me) && x.date >= today()).length };
 }
 
 /* ----- Écrans de connexion ----- */
 const GOOGLE_G = '<svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>';
-const googleOn = () => C.googleSignIn !== false;
+const googleOn = () => C.googleSignIn !== false && (!standaloneMode || !!C.googleInstalledApp);
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 function authLayout(inner) {
   return `<div class="auth">
@@ -435,6 +443,7 @@ function viewAuth() {
       <button class="btn red btn-xl block" type="submit">Se connecter</button>
     </form>
     <button type="button" class="link-alt center" data-act="authView" data-v="reset">Mot de passe oublié ?</button>
+    ${standaloneMode && !googleOn() ? `<p class="auth-lead" style="margin:0;font-size:14px">Inscrit avec Google ? Dans l'app installée, touchez « Mot de passe oublié ? » pour vous créer un mot de passe, puis connectez-vous avec.</p>` : ''}
     ${googleOn() ? `<div class="or">ou</div>${googleBtn('Continuer avec Google')}` : ''}`);
   return authLayout(`
     <h1 class="auth-title">Connexion</h1>
@@ -443,7 +452,7 @@ function viewAuth() {
       ${msgHtml()}
       <button class="btn red btn-xl block" type="submit">Continuer</button>
     </form>
-    ${googleOn() ? `<div class="or">ou continuer avec</div>${googleBtn('Continuer avec Google')}` : ''}
+    ${googleOn() ? `<div class="or">ou continuer avec</div>${googleBtn('Continuer avec Google')}` : standaloneMode && C.googleSignIn !== false ? `<p class="auth-lead" style="font-size:14px">Vous utilisez Google ? Entrez votre courriel Gmail, puis « Mot de passe oublié ? » la première fois.</p>` : ''}
     <div class="auth-alt"><button type="button" class="link-alt muted-link" data-act="authView" data-v="signup">Créer un nouveau compte</button></div>`);
 }
 function viewCompleteProfile() {
@@ -715,8 +724,8 @@ function viewRequestsMgr() {
 
 /* ----- Gérant : équipe ----- */
 function viewStaff() {
-  const pending = S.users.filter(u => u.status === 'pending').sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
-  const active = activeUsers(), others = S.users.filter(u => u.status === 'inactive' || u.status === 'refused');
+  const pending = realUsers().filter(u => u.status === 'pending').sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const active = activeUsers(), others = realUsers().filter(u => u.status === 'inactive' || u.status === 'refused');
   const link = signupLink();
   const hrs = uid => S.shifts.filter(s => s.uid === uid).reduce((a, s) => a + paidMin(s), 0);
   const ct = uid => S.contacts[uid] || {};
