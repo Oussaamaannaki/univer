@@ -1,5 +1,7 @@
 # MINISO · Chemin de contrôle — CAH5 Galeries de Granby
 
+> Deuxième application : **Horaires** (comptes employés, horaire, disponibilités, congés, échanges, budget) dans le dossier `horaires/`, en ligne à `/horaires/`. Mise en service : voir `horaires/GUIDE.md`.
+
 Application web de contrôle du magasin, à ouvrir sur un téléphone, une tablette ou l'ordinateur du magasin. Les employés n'ont besoin d'aucun compte : il suffit d'ouvrir le lien.
 
 ## Contenu

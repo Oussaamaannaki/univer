@@ -1,0 +1,13 @@
+{
+  "name": "MINISO · Horaires",
+  "short_name": "Horaires CAH5",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F6F4F2",
+  "theme_color": "#D7001D",
+  "lang": "fr-CA",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

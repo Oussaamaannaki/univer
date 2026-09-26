@@ -1,0 +1,26 @@
+/*
+ * MINISO · Horaires — configuration.
+ * Collez ici la configuration Firebase (voir GUIDE.md, étape 5), puis republiez.
+ */
+window.HORAIRES_CONFIG = {
+  firebase: {
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: ''
+  },
+
+  // Compte propriétaire : ce courriel devient automatiquement gérant après confirmation.
+  // Doit être identique au courriel inscrit dans firestore.rules.
+  ownerEmail: 'annakioussama99@gmail.com',
+
+  store: { code: 'CAH5', name: 'Galeries de Granby' },
+
+  // Premier jour de la semaine d'horaire : 0 = dimanche, 1 = lundi. Ne pas changer après le premier horaire.
+  weekStartsOn: 0,
+
+  // Tests seulement : utilise les émulateurs Firebase locaux
+  emulator: false
+};

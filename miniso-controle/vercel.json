@@ -1,0 +1,5 @@
+{
+  "redirects": [
+    { "source": "/horaires", "destination": "/horaires/", "permanent": true }
+  ]
+}
