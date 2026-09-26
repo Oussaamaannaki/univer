@@ -86,3 +86,15 @@ Je les ajoute à l'application et je la republie : c'est en ligne en moins d'une
 ## Sur le téléphone
 
 Ouvrez le lien dans Safari, puis **Partager → Sur l'écran d'accueil**. L'icône « Horaires CAH5 » apparaît, séparée de l'application Chemin de contrôle.
+
+## Connexion Google dans l'app installée (iPhone) — 2 minutes, une seule fois
+
+Google doit accepter l'adresse de l'app. Faites ceci sur l'ordinateur, avec **annakioussama99@gmail.com** :
+
+1. Ouvrez **https://console.cloud.google.com/apis/credentials?project=miniso-horaires-cah5**.
+2. Sous **ID clients OAuth 2.0**, cliquez sur **Web client (auto created by Google Service)**.
+3. **Origines JavaScript autorisées** → **Ajouter un URI** → `https://miniso-cah5-granby.vercel.app`
+4. **URI de redirection autorisés** → **Ajouter un URI** → `https://miniso-cah5-granby.vercel.app/__/auth/handler`
+5. Cliquez sur **Enregistrer**. Google peut prendre de 5 minutes à quelques heures pour l'appliquer.
+
+Aucune autre action : l'app le détecte d'elle-même et affiche « Continuer avec Google » dans l'icône de l'écran d'accueil. La session reste ouverte jusqu'à « Se déconnecter ».
