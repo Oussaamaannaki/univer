@@ -435,6 +435,7 @@ function authLayout(inner) {
     <div class="auth-top"><span class="wm">MINISO</span><span class="wm-sub">Horaires · ${esc(C.store.code)} ${esc(C.store.name)}</span></div>
     <div class="auth-main">${inner}</div>
     <p class="auth-legal">${svg(IC.lock, 13)} Accès réservé à l'équipe du magasin ${esc(C.store.code)}.</p>
+    <p class="dev-credit">Developed by Oussama Annaki</p>
   </div>`;
 }
 const msgHtml = () => S.msg ? `<div class="alert ${S.msg.kind}">${svg(S.msg.kind === 'ok' ? IC.check : IC.alert, 16)}<span>${esc(S.msg.text)}</span></div>` : '';
@@ -920,7 +921,8 @@ function viewProfile() {
     </div></section>` : ''}
     <button class="btn block" data-act="logout">${svg(IC.out, 16)} Se déconnecter</button>
     <div class="quiet-links">${S.notif === 'on' ? `<span>${svg(IC.bell, 14)} Notifications activées</span><button type="button" data-act="notifTest">Tester</button><span>·</span>` : ''}<button type="button" data-app-update>Mettre à jour l'application</button></div>
-    <p class="fine" style="text-align:center">MINISO · ${esc(C.store.code)} ${esc(C.store.name)} · Horaires</p>`;
+    <p class="fine" style="text-align:center">MINISO · ${esc(C.store.code)} ${esc(C.store.name)} · Horaires</p>
+    <p class="dev-credit">Developed by Oussama Annaki</p>`;
 }
 
 /* ---------------- Fenêtres ---------------- */

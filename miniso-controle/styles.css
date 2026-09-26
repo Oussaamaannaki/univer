@@ -213,3 +213,4 @@ button.lrow:active{background:var(--sunken)}
 .wrap>*{min-width:0}
 .tools .btn{white-space:normal;text-align:left;line-height:1.25}
 html,body{overflow-x:hidden}
+.dev-credit{display:inline-block;margin-top:4px;font-size:11.5px;letter-spacing:.04em;opacity:.8}

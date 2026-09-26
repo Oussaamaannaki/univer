@@ -254,7 +254,7 @@
         <button class="btn red block" data-act="submit">${svg(IC.check, 18, 3)} ${t('submit')}</button>
         ${A.confirm === 'reset' ? `<div class="confirm">${t('resetConfirm')} <button class="btn sm danger" data-act="resetYes">${t('yes')}</button><button class="btn sm" data-act="cancelConfirm">${t('cancel')}</button></div>` : `<button class="btn ghost sm" data-act="reset">${t('reset')}</button>`}
       </section>
-      <div class="foot">MINISO · ${esc(storeLabel(d.store))} · ${t('footer')}</div>`;
+      <div class="foot">MINISO · ${esc(storeLabel(d.store))} · ${t('footer')}<br><span class="dev-credit">Developed by Oussama Annaki</span></div>`;
   }
   function sectionHtml(s, d) {
     const on = !s.optional || d.sections[s.id];
@@ -442,7 +442,7 @@
       acc('rep', ['#FFF4D6', '#9A6B00'], IC.chart, t('reports'), `${A.reports.length} ${t('reportsN')}`, repBody) +
       acc('sup', ['#FBE3E6', '#B0001A'], IC.lock, t('supervisor'), A.sup ? '✓' : t('protected'), supBody) +
       `<button class="btn block" style="margin-top:6px" data-app-update>Mettre à jour l'application</button>` +
-      `<div class="drawer-foot">MINISO · ${esc(storeLabel(A.cfg.stores[0]?.code))} · ${t('footer')}</div>`;
+      `<div class="drawer-foot">MINISO · ${esc(storeLabel(A.cfg.stores[0]?.code))} · ${t('footer')}<br><span class="dev-credit">Developed by Oussama Annaki</span></div>`;
     if (A.acc.comms && unread) { A.readMsgs = [...new Set([...A.readMsgs, ...A.messages.map(m => m.id)])]; ls.set('readMsgs', A.readMsgs); $('#menuBadge').hidden = true; }
   }
 
