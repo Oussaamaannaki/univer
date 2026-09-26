@@ -3,7 +3,7 @@
  * Installation : voir README.md, étape 2.
  */
 const TEAM_KEY = 'cah5-granby';   // doit être identique à teamKey dans config.js
-const SUPERVISOR_PIN = '2580';    // doit être identique à supervisorPin dans config.js
+const SUPERVISOR_PIN = '1312';    // doit être identique à supervisorPin dans config.js
 const PHOTO_FOLDER = 'MINISO Chemin de contrôle — Photos';
 
 const SHEETS = {

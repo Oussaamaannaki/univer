@@ -15,11 +15,11 @@ window.APP_CONFIG = {
   threshold: 85,
 
   // NIP de la section « Visite superviseur ». CHANGEZ-LE avant de partager le lien.
-  supervisorPin: '2580',
+  supervisorPin: '1312',
 
   // Synchronisation d'équipe (Google Sheets). Laissez vide pour un usage sur un seul appareil.
   // Voir README.md, étape 2, pour obtenir cette adresse.
-  syncUrl: '',
+  syncUrl: 'https://script.google.com/macros/s/AKfycbzGsfRkIvzWIu837ln1hIuls9ZAbCPD1_oOpIMh5RVNbN-s04ytFGhiBwFWDZJqnqqE/exec',
   // Clé partagée avec le script Google (même valeur que TEAM_KEY dans Code.gs)
   teamKey: 'cah5-granby',
 
