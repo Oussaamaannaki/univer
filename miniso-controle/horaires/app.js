@@ -3,7 +3,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.3.0/firebas
 import {
   initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
   sendEmailVerification, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential,
-  EmailAuthProvider, connectAuthEmulator, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult
+  EmailAuthProvider, linkWithCredential, connectAuthEmulator, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult
 } from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
 import {
   getFirestore, connectFirestoreEmulator, doc, getDoc, getDocs, setDoc, updateDoc, addDoc,
@@ -443,7 +443,7 @@ function viewAuth() {
       <button class="btn red btn-xl block" type="submit">Se connecter</button>
     </form>
     <button type="button" class="link-alt center" data-act="authView" data-v="reset">Mot de passe oublié ?</button>
-    ${standaloneMode && !googleOn() ? `<p class="auth-lead" style="margin:0;font-size:14px">Inscrit avec Google ? Dans l'app installée, touchez « Mot de passe oublié ? » pour vous créer un mot de passe, puis connectez-vous avec.</p>` : ''}
+    ${standaloneMode && !googleOn() ? `<p class="auth-lead" style="margin:0;font-size:14px">Inscrit avec Google ? Ouvrez le lien dans Safari, connectez-vous avec Google, puis Compte → « Créer mon mot de passe ». Utilisez ensuite ce mot de passe ici.</p>` : ''}
     ${googleOn() ? `<div class="or">ou</div>${googleBtn('Continuer avec Google')}` : ''}`);
   return authLayout(`
     <h1 class="auth-title">Connexion</h1>
@@ -452,7 +452,7 @@ function viewAuth() {
       ${msgHtml()}
       <button class="btn red btn-xl block" type="submit">Continuer</button>
     </form>
-    ${googleOn() ? `<div class="or">ou continuer avec</div>${googleBtn('Continuer avec Google')}` : standaloneMode && C.googleSignIn !== false ? `<p class="auth-lead" style="font-size:14px">Vous utilisez Google ? Entrez votre courriel Gmail, puis « Mot de passe oublié ? » la première fois.</p>` : ''}
+    ${googleOn() ? `<div class="or">ou continuer avec</div>${googleBtn('Continuer avec Google')}` : standaloneMode && C.googleSignIn !== false ? `<p class="auth-lead" style="font-size:14px">Inscrit avec Google ? Ouvrez d'abord le lien dans Safari, connectez-vous avec Google, puis Compte → « Créer mon mot de passe ».</p>` : ''}
     <div class="auth-alt"><button type="button" class="link-alt muted-link" data-act="authView" data-v="signup">Créer un nouveau compte</button></div>`);
 }
 function viewCompleteProfile() {
@@ -798,7 +798,13 @@ function viewProfile() {
         <div class="field"><label for="pf-phone">Téléphone</label><input class="input" id="pf-phone" type="tel" value="${esc(dv('pf-phone', c.phone || ''))}"></div>
         <button class="btn red span2" type="submit">Enregistrer</button>
       </form></section>
-    ${!(S.user.providerData || []).some(x => x.providerId === 'password') ? `<section class="card"><div class="card-b"><div class="row">${GOOGLE_G}<span>Connecté avec votre compte Google. Le mot de passe se gère chez Google.</span></div></div></section>` : `<section class="card"><div class="card-h"><h2>Changer mon mot de passe</h2></div>
+    ${!(S.user.providerData || []).some(x => x.providerId === 'password') ? `<section class="card"><div class="card-h"><h2>Créer un mot de passe</h2></div>
+      <form class="card-b form-grid" data-form="linkpw" novalidate>
+        <div class="row span2">${GOOGLE_G}<span>Vous êtes connecté avec Google. Créez un mot de passe pour vous connecter dans l'app installée sur l'écran d'accueil, avec votre courriel <b>${esc(S.user.email)}</b>.</span></div>
+        <div class="field"><label for="lp-new">Nouveau mot de passe</label><input class="input" id="lp-new" type="password" autocomplete="new-password"></div>
+        <div class="field"><label for="lp-new2">Confirmer</label><input class="input" id="lp-new2" type="password" autocomplete="new-password"></div>
+        <button class="btn red span2" type="submit">${svg(IC.lock, 16)} Créer mon mot de passe</button>
+      </form></section>` : `<section class="card"><div class="card-h"><h2>Changer mon mot de passe</h2></div>
       <form class="card-b form-grid" data-form="password" novalidate>
         <div class="field span2"><label for="pw-cur">Mot de passe actuel</label><input class="input" id="pw-cur" type="password" autocomplete="current-password"></div>
         <div class="field"><label for="pw-new">Nouveau mot de passe</label><input class="input" id="pw-new" type="password" autocomplete="new-password"></div>
@@ -1154,6 +1160,17 @@ async function changePw() {
   ['pw-cur', 'pw-new', 'pw-new2'].forEach(i => { $('#' + i).value = ''; });
   toast('Mot de passe modifié');
 }
+async function linkPassword() {
+  const n1 = $('#lp-new').value, n2 = $('#lp-new2').value;
+  if (n1.length < 8) return toast('Le mot de passe doit contenir au moins 8 caractères.', 'bad');
+  if (n1 !== n2) return toast('Les deux mots de passe ne correspondent pas.', 'bad');
+  try {
+    try { await linkWithCredential(S.user, EmailAuthProvider.credential(S.user.email, n1)); }
+    catch (e) { if (e.code === 'auth/email-already-in-use' || e.code === 'auth/credential-already-in-use') await updatePassword(S.user, n1); else throw e; }
+  }
+  catch (e) { return toast(e.code === 'auth/requires-recent-login' ? 'Par sécurité, déconnectez-vous, reconnectez-vous avec Google, puis réessayez.' : e.code === 'auth/provider-already-linked' ? 'Un mot de passe existe déjà pour ce compte.' : authErr(e), 'bad'); }
+  await S.user.reload(); toast('Mot de passe créé. Utilisez-le dans l\'app installée.'); render(true);
+}
 async function saveSettings() {
   const sd = S.setDraft;
   sd.positions = sd.positions.filter(p => String(p.name).trim()).map(p => ({ ...p, name: String(p.name).trim(), id: p.id || String(p.name).trim().toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-') + '-' + uidRand() }));
@@ -1258,6 +1275,7 @@ document.addEventListener('submit', async e => {
       case 'timeoff': await submitTimeoff(); break;
       case 'profile': await saveProfile(); break;
       case 'password': await changePw(); break;
+      case 'linkpw': await linkPassword(); break;
     }
   } catch (err) { handleErr(err); }
   if (btn && btn.isConnected) btn.disabled = false;
