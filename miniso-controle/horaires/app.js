@@ -1,7 +1,7 @@
 /* MINISO · Horaires — comptes employés, horaire, disponibilités, congés, échanges, budget */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js';
 import {
-  getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
   sendEmailVerification, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential,
   EmailAuthProvider, connectAuthEmulator, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult
 } from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
@@ -81,7 +81,8 @@ if (configured) {
   const fbConf = { ...C.firebase };
   if (standaloneMode && C.authProxyHost && location.host === C.authProxyHost) fbConf.authDomain = C.authProxyHost;
   const app = initializeApp(fbConf);
-  auth = getAuth(app);
+  // Session conservée sur l'appareil jusqu'à « Se déconnecter » (aucune expiration automatique)
+  auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence], popupRedirectResolver: browserPopupRedirectResolver });
   auth.languageCode = 'fr';
   db = getFirestore(app);
   if (C.emulator) {
