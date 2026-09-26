@@ -75,8 +75,12 @@ const IC = {
 /* ---------------- Firebase ---------------- */
 const configured = !!(C.firebase && C.firebase.apiKey && C.firebase.projectId);
 let auth = null, db = null;
+// App installée (écran d'accueil iPhone) : la connexion Google passe par l'adresse de l'app elle-même
+const standaloneMode = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 if (configured) {
-  const app = initializeApp(C.firebase);
+  const fbConf = { ...C.firebase };
+  if (standaloneMode && C.authProxyHost && location.host === C.authProxyHost) fbConf.authDomain = C.authProxyHost;
+  const app = initializeApp(fbConf);
   auth = getAuth(app);
   auth.languageCode = 'fr';
   db = getFirestore(app);
@@ -885,7 +889,7 @@ async function doLogin() {
     showMsg('err', authErr(e) + (bad && googleOn() ? ' Inscrit avec Google ? Utilisez « Continuer avec Google ».' : ''));
   }
 }
-const isStandalone = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const isStandalone = () => standaloneMode;
 async function doGoogle() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
