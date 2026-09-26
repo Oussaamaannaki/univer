@@ -332,3 +332,9 @@ button.prow:hover{background:var(--sunken)}
 .paste-help .fine{margin:0 0 10px}
 .paste-help textarea{width:100%;resize:vertical;font-size:14px;word-break:break-all}
 .paste-help .field{margin-bottom:10px}
+.quiet-links{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px 8px;font-size:13px;color:var(--ink-3);margin-top:4px}
+.quiet-links span{display:inline-flex;align-items:center;gap:5px}
+.quiet-links button{border:0;background:transparent;color:var(--ink-2);font:inherit;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px 2px}
+details.fold>summary h2{display:flex;align-items:center;gap:8px}
+details.fold>summary>svg{transition:transform .2s}
+details.fold[open]>summary>svg{transform:rotate(90deg)}

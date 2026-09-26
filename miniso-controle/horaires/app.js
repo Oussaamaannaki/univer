@@ -867,9 +867,9 @@ function viewProfile() {
   const w0 = weekOf(today());
   const hrs = w => S.myShifts.filter(s => s.weekId === w).reduce((a, s) => a + paidMin(s), 0);
   return `<div class="page-head"><div><span class="eyebrow">Mon compte</span><h1>${esc(fullName(p))}</h1></div>${mgr ? `<span class="pill red">${isOwner() ? 'Propriétaire' : 'Gérant'}</span>` : `<span class="pill na">${esc(p.position ? posOf(p.position).name : 'Employé')}</span>`}</div>
-    <section class="card"><div class="card-b">${verifBlock()}
+    <section class="card"><div class="card-b">${S.user.emailVerified ? '' : verifBlock()}
       <div class="row"><span class="pill na">${svg(IC.clock, 13)} Cette semaine : ${fmtDur(hrs(w0))}</span><span class="pill na">Semaine prochaine : ${fmtDur(hrs(addDays(w0, 7)))}</span></div></div></section>
-    <section class="card"><div class="card-h"><h2>Notifications</h2></div><div class="card-b">${notifCard(false)}</div></section>
+    ${S.notif && S.notif !== 'on' && S.notif !== 'unsupported' ? `<section class="card"><div class="card-h"><h2>Notifications</h2></div><div class="card-b">${notifCard(false)}</div></section>` : ''}
     <section class="card"><div class="card-h"><h2>Mes informations</h2></div>
       <form class="card-b form-grid" data-form="profile" novalidate>
         <div class="field"><label for="pf-first">Prénom</label><input class="input" id="pf-first" value="${esc(dv('pf-first', p.firstName || ''))}"></div>
@@ -884,13 +884,13 @@ function viewProfile() {
         <div class="field"><label for="lp-new">Nouveau mot de passe</label><input class="input" id="lp-new" type="password" autocomplete="new-password"></div>
         <div class="field"><label for="lp-new2">Confirmer</label><input class="input" id="lp-new2" type="password" autocomplete="new-password"></div>
         <button class="btn red span2" type="submit">${svg(IC.lock, 16)} Créer mon mot de passe</button>
-      </form></section>` : `<section class="card"><div class="card-h"><h2>Changer mon mot de passe</h2></div>
+      </form></section>` : `<details class="card fold" id="pw-box" ${S.pwOpen ? 'open' : ''}><summary class="card-h"><h2>${svg(IC.lock, 16)} Changer mon mot de passe</h2>${svg(IC.right, 18)}</summary>
       <form class="card-b form-grid" data-form="password" novalidate>
         <div class="field span2"><label for="pw-cur">Mot de passe actuel</label><input class="input" id="pw-cur" type="password" autocomplete="current-password"></div>
         <div class="field"><label for="pw-new">Nouveau mot de passe</label><input class="input" id="pw-new" type="password" autocomplete="new-password"></div>
         <div class="field"><label for="pw-new2">Confirmer</label><input class="input" id="pw-new2" type="password" autocomplete="new-password"></div>
         <button class="btn span2" type="submit">${svg(IC.lock, 16)} Changer le mot de passe</button>
-      </form></section>`}
+      </form></details>`}
     ${mgr ? `<section class="card"><div class="card-h"><h2>Réglages du magasin</h2></div><div class="card-b">
       <b>Postes</b>
       ${sd.positions.map((x, i) => `<div class="set-row"><input type="color" value="${esc(x.color)}" data-set="positions.${i}.color" aria-label="Couleur"><input class="input" value="${esc(x.name)}" data-set="positions.${i}.name" aria-label="Nom du poste"><button class="btn sm ghost" data-act="rmSet" data-v="positions.${i}" aria-label="Retirer">${svg(IC.trash, 16)}</button></div>`).join('')}
@@ -900,9 +900,8 @@ function viewProfile() {
       <button class="btn sm" data-act="addPreset">${svg(IC.plus, 14)} Ajouter un quart type</button>
       <div class="row"><button class="btn red" data-act="saveSettings">Enregistrer les réglages</button></div>
     </div></section>` : ''}
-    <section class="card"><div class="card-b"><b>Mise à jour de l'application</b><p class="muted">Charge la dernière version publiée. L'app vous avertit aussi d'elle-même quand une nouvelle version est prête.</p>
-      <button class="btn block" data-app-update>${svg(IC.clock, 16)} Mettre à jour l'application</button></div></section>
     <button class="btn block" data-act="logout">${svg(IC.out, 16)} Se déconnecter</button>
+    <div class="quiet-links">${S.notif === 'on' ? `<span>${svg(IC.bell, 14)} Notifications activées</span><button type="button" data-act="notifTest">Tester</button><span>·</span>` : ''}<button type="button" data-app-update>Mettre à jour l'application</button></div>
     <p class="fine" style="text-align:center">MINISO · ${esc(C.store.code)} ${esc(C.store.name)} · Horaires</p>`;
 }
 
@@ -1268,7 +1267,7 @@ async function saveUser(form, approve) {
 const futureShifts = async uid => (await getDocs(query(collection(db, 'shifts'), where('uid', '==', uid)))).docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.date >= today());
 const futureShiftsCount = uid => S.shifts.filter(x => x.uid === uid && x.date >= today()).length || 'le cas échéant';
 // Employé qui a quitté : accès coupé, quarts à venir retirés, historique conservé
-document.addEventListener('toggle', e => { if (e.target.id === 'old-staff') S.oldOpen = e.target.open; if (e.target.classList && e.target.classList.contains('paste-help')) S.pasteOpen = e.target.open; }, true);
+document.addEventListener('toggle', e => { if (e.target.id === 'old-staff') S.oldOpen = e.target.open; if (e.target.id === 'pw-box') S.pwOpen = e.target.open; if (e.target.classList && e.target.classList.contains('paste-help')) S.pasteOpen = e.target.open; }, true);
 async function removeUser(id) {
   const u = userById(id); if (!u) return closeModal();
   const now = nowISO(), shifts = await futureShifts(id), batch = writeBatch(db);
