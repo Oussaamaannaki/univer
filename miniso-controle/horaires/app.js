@@ -199,7 +199,8 @@ const issueHtml = i => `<div class="iss ${i.lvl}">${svg(i.lvl === 'info' ? IC.cl
 /* ---------------- Session ---------------- */
 function startSession(user) {
   unsubAll(); resetData();
-  S.user = user; S.authReady = true;
+  S.user = user; S.authReady = true; S.notifSynced = false;
+  if (user) refreshNotifState();
   if (!user) { render(true); return; }
   sub('me', () => onSnapshot(doc(db, 'users', user.uid), snap => { S.profile = snap.exists() ? snap.data() : null; onProfile(); }, () => { S.profile = null; onProfile(); }));
   sub('myContact', () => onSnapshot(doc(db, 'contacts', user.uid), snap => { S.contact = snap.exists() ? snap.data() : null; syncVerified(); }, () => { }));
@@ -262,6 +263,66 @@ if (configured) {
     if (user && isOwnerEmail(user) && user.emailVerified) { try { await user.getIdToken(true); } catch (e) { } }
     startSession(user);
   });
+}
+
+/* ---------------- Notifications (push) ---------------- */
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let swReg = null;
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(r => { swReg = r; refreshNotifState(); }).catch(() => { });
+function b64ToBytes(b64) { const p = '='.repeat((4 - b64.length % 4) % 4); const raw = atob((b64 + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, c => c.charCodeAt(0)); }
+async function refreshNotifState() {
+  let st;
+  if (!pushSupported()) st = isIOS() && !standaloneMode ? 'install' : 'unsupported';
+  else if (Notification.permission === 'denied') st = 'denied';
+  else {
+    const reg = swReg || await navigator.serviceWorker.getRegistration().catch(() => null);
+    const subn = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
+    st = subn && Notification.permission === 'granted' ? 'on' : 'off';
+    if (subn && S.user && !S.notifSynced) { S.notifSynced = true; saveSubscription(subn).catch(() => { }); }
+  }
+  if (st !== S.notif) { S.notif = st; render(); }
+}
+async function api(path, body) {
+  const r = await fetch('/api/' + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.error || 'http ' + r.status); e.code = 'api/' + (j.error || r.status); throw e; }
+  return j;
+}
+async function saveSubscription(subn) {
+  await api('push-subscribe', { idToken: await S.user.getIdToken(), subscription: subn.toJSON(), device: navigator.userAgent });
+}
+async function enableNotifications() {
+  if (!pushSupported()) return toast(isIOS() ? "Ajoutez d'abord l'app à l'écran d'accueil (Partager → Sur l'écran d'accueil), puis ouvrez-la depuis l'icône." : "Ce navigateur ne permet pas les notifications.", 'bad');
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') { await refreshNotifState(); return toast('Notifications refusées. Vous pouvez les autoriser dans les réglages du téléphone.', 'bad'); }
+  const reg = swReg || await navigator.serviceWorker.ready;
+  const { publicKey } = await api('push-key');
+  let subn = await reg.pushManager.getSubscription();
+  if (!subn) subn = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+  await saveSubscription(subn); S.notifSynced = true;
+  await refreshNotifState(); toast('Notifications activées');
+}
+async function testNotification() {
+  await api('notify', { idToken: await S.user.getIdToken(), test: true, title: 'MINISO · Horaires', body: 'Les notifications fonctionnent sur cet appareil.' });
+  toast('Notification test envoyée');
+}
+// Envoi silencieux (n'empêche jamais l'action principale)
+function pushTo(uids, title, body, extra = {}) {
+  if (!S.user) return;
+  S.user.getIdToken().then(t => api('notify', { idToken: t, uids, title, body, ...extra })).catch(e => console.warn('notify', e.code));
+}
+function notifCard(compact) {
+  const st = S.notif;
+  if (!st || st === 'on' && compact) return '';
+  const msg = {
+    on: ['ok', 'Notifications activées sur cet appareil : rappel 1 h avant chaque quart et avis quand l\'horaire est publié.'],
+    off: ['info', 'Recevez un rappel 1 h avant chaque quart et un avis quand votre horaire est publié.'],
+    install: ['info', 'Pour recevoir les notifications sur iPhone : Partager → Sur l\'écran d\'accueil, puis ouvrez l\'app depuis l\'icône.'],
+    denied: ['warn', 'Notifications bloquées. Autorisez-les dans Réglages → Notifications → Horaires CAH5.'],
+    unsupported: ['info', 'Ce navigateur ne permet pas les notifications.']
+  }[st];
+  return `<div class="alert ${msg[0]}">${svg(IC.bell, 16)}<span>${msg[1]}</span></div>${st === 'off' ? `<button class="btn red" data-act="notifOn">${svg(IC.bell, 16)} Activer les notifications</button>` : st === 'on' ? `<button class="btn sm" data-act="notifTest">Envoyer une notification test</button>` : ''}`;
 }
 
 /* ---------------- Rendu ---------------- */
@@ -497,6 +558,7 @@ function viewMine() {
   const pend = S.timeoff.filter(o => o.status === 'pending').length;
   const weeks = [[w0, 'Cette semaine'], [addDays(w0, 7), 'Semaine prochaine'], [addDays(w0, 14), 'Dans deux semaines']];
   return `<div class="page-head"><div><span class="eyebrow">${esc(cap(fmtLong(t)))}</span><h1>Bonjour ${esc(S.profile.firstName)}</h1></div></div>
+    ${S.notif && S.notif !== 'on' && S.notif !== 'unsupported' ? `<section class="card"><div class="card-b">${notifCard(true)}</div></section>` : ''}
     ${next ? nextCard(next) : `<div class="card empty-card">${svg(IC.cal, 28)}<p>Aucun quart à venir dans l'horaire publié.</p></div>`}
     ${pend ? `<div class="alert warn">${svg(IC.clock, 16)}<span>${pend} demande${pend > 1 ? 's' : ''} de congé en attente d'approbation.</span></div>` : ''}
     ${weeks.map(([w, label]) => {
@@ -718,6 +780,7 @@ function viewProfile() {
   return `<div class="page-head"><div><span class="eyebrow">Mon compte</span><h1>${esc(fullName(p))}</h1></div>${mgr ? `<span class="pill red">${isOwner() ? 'Propriétaire' : 'Gérant'}</span>` : `<span class="pill na">${esc(p.position ? posOf(p.position).name : 'Employé')}</span>`}</div>
     <section class="card"><div class="card-b">${verifBlock()}
       <div class="row"><span class="pill na">${svg(IC.clock, 13)} Cette semaine : ${fmtDur(hrs(w0))}</span><span class="pill na">Semaine prochaine : ${fmtDur(hrs(addDays(w0, 7)))}</span></div></div></section>
+    <section class="card"><div class="card-h"><h2>Notifications</h2></div><div class="card-b">${notifCard(false)}</div></section>
     <section class="card"><div class="card-h"><h2>Mes informations</h2></div>
       <form class="card-b form-grid" data-form="profile" novalidate>
         <div class="field"><label for="pf-first">Prénom</label><input class="input" id="pf-first" value="${esc(dv('pf-first', p.firstName || ''))}"></div>
@@ -950,7 +1013,7 @@ async function saveShift() {
   const f = readShiftForm(), id = S.modal.id;
   if (!f.uid || !f.date || !f.start || !f.end || f.start === f.end) return toast('Vérifiez l\'employé et les heures.', 'bad');
   const pub = !!(S.weekDoc && S.weekDoc.published), now = nowISO(), batch = writeBatch(db);
-  const data = { ...f, weekId: weekOf(f.date), published: pub, updatedAt: now, updatedBy: S.user.uid };
+  const data = { ...f, weekId: weekOf(f.date), published: pub, reminded: false, updatedAt: now, updatedBy: S.user.uid };
   if (pub) data.modifiedAfterPublish = true;
   const old = id ? S.shifts.find(s => s.id === id) : null;
   if (id) batch.update(doc(db, 'shifts', id), data);
@@ -987,6 +1050,9 @@ async function publishWeek() {
   if (!again) batch.set(doc(db, 'feed', feedId()), { audience: 'all', type: 'publish', week: S.week, text: `L'horaire de la semaine du ${fmtLong(S.week)} est publié.`, createdAt: now });
   else new Set([...(wk.changedUids || []), ...S.shifts.filter(s => s.modifiedAfterPublish).map(s => s.uid)]).forEach(u => batch.set(doc(db, 'feed', feedId()), { audience: u, type: 'change', week: S.week, text: `Votre horaire de la semaine du ${fmtLong(S.week)} a changé. Vérifiez vos quarts.`, createdAt: now }));
   await batch.commit(); closeModal(); toast(again ? 'Modifications annoncées' : 'Horaire publié');
+  const wk2 = fmtLong(S.week);
+  if (!again) pushTo([...new Set(S.shifts.map(s => s.uid))], 'Votre horaire est disponible', `L'horaire de la semaine du ${wk2} est publié. Touchez pour voir vos quarts.`, { tag: 'publie-' + S.week });
+  else pushTo([...new Set([...(wk.changedUids || []), ...S.shifts.filter(s => s.modifiedAfterPublish).map(s => s.uid)])], 'Votre horaire a changé', `Des quarts ont été modifiés pour la semaine du ${wk2}. Touchez pour vérifier.`, { tag: 'change-' + S.week });
 }
 async function unpublishWeek() {
   const now = nowISO(), batch = writeBatch(db);
@@ -1023,6 +1089,8 @@ async function decideSwap(id, v) {
     if (x.takenBy) batch.set(doc(db, 'feed', feedId()), { audience: x.takenBy, type: 'swap', text: `Échange refusé : le quart du ${when} reste à ${fromName}.`, createdAt: now });
   }
   await batch.commit(); toast(v === 'approved' ? 'Échange approuvé' : v === 'refused' ? 'Échange refusé' : 'Offre annulée');
+  if (v === 'approved') pushTo([x.fromUid, x.takenBy], 'Échange approuvé', `Quart du ${when} : ${takerName} le remplace.`);
+  else if (v === 'refused') pushTo([x.fromUid, x.takenBy], 'Échange refusé', `Le quart du ${when} reste à ${fromName}.`);
 }
 async function saveAvail() {
   const a = S.availDraft;
@@ -1045,6 +1113,7 @@ async function decideOff(id, v) {
   batch.update(doc(db, 'timeoff', id), { status: v, decidedBy: S.user.uid, decidedAt: now, managerNote: note, updatedAt: now });
   batch.set(doc(db, 'feed', feedId()), { audience: o.uid, type: 'timeoff', text: `Votre demande de congé (${toRange(o).toLowerCase()}) a été ${v === 'approved' ? 'approuvée' : 'refusée'}.${note ? ' Note : ' + note : ''}`, createdAt: now });
   await batch.commit(); toast(v === 'approved' ? 'Congé approuvé' : 'Congé refusé');
+  pushTo([o.uid], v === 'approved' ? 'Congé approuvé' : 'Congé refusé', `Votre demande de congé (${toRange(o).toLowerCase()}) a été ${v === 'approved' ? 'approuvée' : 'refusée'}.`);
 }
 async function saveUser(form, approve) {
   const id = form.dataset.id, now = nowISO(), batch = writeBatch(db);
@@ -1057,6 +1126,7 @@ async function saveUser(form, approve) {
   if (w !== '') batch.set(doc(db, 'wages', id), { hourly: Number(w), updatedAt: now });
   if (approve) batch.set(doc(db, 'feed', feedId()), { audience: id, type: 'welcome', text: `Bienvenue dans l'équipe ${C.store.code} ! Votre compte est activé. Remplissez vos disponibilités dans « Demandes ».`, createdAt: now });
   await batch.commit(); closeModal(); toast(approve ? 'Compte approuvé' : 'Enregistré');
+  if (approve) pushTo([id], 'Compte activé', `Bienvenue dans l'équipe ${C.store.code} ! Vous avez maintenant accès à l'horaire.`);
 }
 async function saveProfile() {
   const first = val('pf-first'), last = val('pf-last'), phone = val('pf-phone');
@@ -1156,6 +1226,8 @@ document.addEventListener('click', async e => {
       case 'addPreset': S.setDraft.presets.push({ label: 'Nouveau quart', start: '12:00', end: '20:00', breakMin: 30 }); render(true); break;
       case 'rmSet': { const [k, i] = el.dataset.v.split('.'); S.setDraft[k].splice(Number(i), 1); render(true); break; }
       case 'saveSettings': await saveSettings(); break;
+      case 'notifOn': await enableNotifications(); break;
+      case 'notifTest': await testNotification(); break;
     }
   } catch (err) { handleErr(err); }
 });
