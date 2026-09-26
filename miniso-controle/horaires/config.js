@@ -20,7 +20,7 @@ window.HORAIRES_CONFIG = {
   googleSignIn: true,
   // App installée sur l'écran d'accueil : bouton Google seulement si l'adresse de redirection est ajoutée
   // dans Google Cloud (voir GUIDE.md). Sinon, courriel + mot de passe.
-  googleInstalledApp: false,
+  googleInstalledApp: true,
   authProxyHost: 'miniso-cah5-granby.vercel.app',
 
   // Compte technique qui envoie les notifications (caché dans l'équipe, approuvé automatiquement)
