@@ -289,3 +289,5 @@ button.prow:hover{background:var(--sunken)}
 .toast{background:#1A1616;color:#fff;padding:11px 16px;border-radius:12px;font-weight:700;font-size:14px;box-shadow:var(--shadow);animation:up .2s ease-out;text-align:center}
 .toast.bad{background:var(--red)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.leave-box{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.leave-box p{margin:0 0 10px}

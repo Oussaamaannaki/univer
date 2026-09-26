@@ -755,8 +755,8 @@ function viewStaff() {
         <div class="main"><b>${esc(fullName(u))} ${u.role === 'manager' ? '<span class="pill red">Gérant</span>' : ''}</b>
         <span class="m">${esc(u.position ? posOf(u.position).name : 'Poste à définir')} · ${fmtDur(hrs(u.id))} cette semaine${w != null ? ' · ' + money(w) + '/h' : ''}</span>
         <span class="m">${esc(c.email || '')}${c.phone ? ' · ' + esc(c.phone) : ''}</span></div>${svg(IC.right, 18)}</button>`; }).join('') || `<div class="empty">Aucun employé actif.</div>`}</section>
-    ${others.length ? `<details class="card"><summary class="card-h"><h2>Comptes inactifs ou refusés (${others.length})</h2>${svg(IC.right, 18)}</summary>
-      ${others.map(u => `<div class="prow"><span class="avatar" style="--c:#999">${esc(initials(u))}</span><div class="main"><b>${esc(fullName(u))}</b><span class="m">${u.status === 'refused' ? 'Refusé' : 'Inactif'} · ${esc(ct(u.id).email || '')}</span></div><button class="btn sm" data-act="reactivate" data-id="${u.id}">Activer</button></div>`).join('')}</details>` : ''}`;
+    ${others.length ? `<details class="card" id="old-staff" ${S.oldOpen ? 'open' : ''}><summary class="card-h"><h2>Anciens employés et comptes refusés (${others.length})</h2>${svg(IC.right, 18)}</summary>
+      ${others.map(u => `<div class="prow"><span class="avatar" style="--c:#999">${esc(initials(u))}</span><div class="main"><b>${esc(fullName(u))}</b><span class="m">${u.status === 'refused' ? 'Refusé' : 'Inactif'} · ${esc(ct(u.id).email || '')}</span></div><div class="acts"><button class="btn sm" data-act="reactivate" data-id="${u.id}">Réactiver</button>${isOwner() ? (S.confirm === 'purge' + u.id ? `<button class="btn sm danger" data-act="purgeUser" data-id="${u.id}">Supprimer pour de bon</button><button class="btn sm" data-act="cancelConfirm">Annuler</button>` : `<button class="btn sm ghost" data-act="purgeAsk" data-id="${u.id}" aria-label="Supprimer définitivement">${svg(IC.trash, 16)}</button>`) : ''}</div></div>`).join('')}</details>` : ''}`;
 }
 
 /* ----- Gérant : budget ----- */
@@ -926,11 +926,15 @@ function userForm(m) {
       <div class="field"><label for="u-pos">Poste principal</label><select class="input" id="u-pos"><option value="">À définir</option>${S.settings.positions.map(p => `<option value="${esc(p.id)}" ${p.id === u.position ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
       <div class="field"><label for="u-wage">Taux horaire ($, visible par la direction)</label><input class="input" id="u-wage" type="number" min="0" step="0.01" inputmode="decimal" value="${w != null ? esc(w) : ''}"></div>
       ${approve ? '' : `<div class="field"><label for="u-role">Rôle</label><select class="input" id="u-role" ${isOwner() && !self ? '' : 'disabled'}><option value="employee" ${u.role !== 'manager' ? 'selected' : ''}>Employé</option><option value="manager" ${u.role === 'manager' ? 'selected' : ''}>Gérant (bâtit l'horaire, approuve)</option></select></div>
-      <div class="field"><label for="u-status">Accès</label><select class="input" id="u-status" ${self ? 'disabled' : ''}><option value="active">Actif</option><option value="inactive">Désactivé (ne voit plus l'horaire)</option></select></div>`}
+      <div class="field"><label for="u-status">Accès</label><select class="input" id="u-status" ${self ? 'disabled' : ''}><option value="active">Actif</option><option value="inactive" ${u.status === 'inactive' ? 'selected' : ''}>Désactivé (ne voit plus l'horaire)</option></select></div>`}
       <div class="field span2"><label>Couleur</label><div class="swatches">${COLORS.map(col => `<button type="button" class="swatch" style="--c:${col}" data-act="swatch" data-v="${col}" aria-label="Couleur ${col}" aria-pressed="${(u.color || '') === col}"></button>`).join('')}</div><input type="hidden" id="u-color" value="${esc(u.color || COLORS[0])}"></div>
       ${!approve && !isOwner() ? '<p class="fine span2">Seul le propriétaire peut nommer un gérant.</p>' : ''}
       <div class="span2 row end"><button type="button" class="btn" data-act="closeModal">Annuler</button><button class="btn red" type="submit">${svg(IC.check, 16)} ${approve ? 'Approuver' : 'Enregistrer'}</button></div>
-    </form>`;
+    </form>
+    ${approve || self ? '' : `<div class="leave-box">${S.confirm === 'rmUser'
+      ? `<p><b>Retirer ${esc(fullName(u))} de l'équipe ?</b><br><span class="fine">Son accès à l'app est coupé et ses quarts à venir (${futureShiftsCount(u.id)}) sont supprimés. Ses anciens quarts restent dans l'historique. Vous pourrez le réactiver plus tard.</span></p>
+        <div class="row end"><button type="button" class="btn sm" data-act="cancelConfirmModal">Annuler</button><button type="button" class="btn sm danger" data-act="removeUser" data-id="${u.id}">${svg(IC.trash, 15)} Oui, retirer</button></div>`
+      : `<button type="button" class="btn danger" style="width:100%" data-act="removeUserAsk">${svg(IC.trash, 16)} Retirer de l'équipe (ne travaille plus ici)</button>`}</div>`}`;
 }
 function feedBody() {
   const items = feedItems().slice(0, 50);
@@ -1156,6 +1160,28 @@ async function saveUser(form, approve) {
   await batch.commit(); closeModal(); toast(approve ? 'Compte approuvé' : 'Enregistré');
   if (approve) pushTo([id], 'Compte activé', `Bienvenue dans l'équipe ${C.store.code} ! Vous avez maintenant accès à l'horaire.`);
 }
+const futureShifts = async uid => (await getDocs(query(collection(db, 'shifts'), where('uid', '==', uid)))).docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.date >= today());
+const futureShiftsCount = uid => S.shifts.filter(x => x.uid === uid && x.date >= today()).length || 'le cas échéant';
+// Employé qui a quitté : accès coupé, quarts à venir retirés, historique conservé
+document.addEventListener('toggle', e => { if (e.target.id === 'old-staff') S.oldOpen = e.target.open; }, true);
+async function removeUser(id) {
+  const u = userById(id); if (!u) return closeModal();
+  const now = nowISO(), shifts = await futureShifts(id), batch = writeBatch(db);
+  batch.update(doc(db, 'users', id), { status: 'inactive', updatedAt: now });
+  const weeks = new Set();
+  shifts.forEach(x => { batch.delete(doc(db, 'shifts', x.id)); if (x.published) weeks.add(x.weekId); });
+  weeks.forEach(w => batch.set(doc(db, 'weeks', w), { changedUids: arrayUnion(id), updatedAt: now }, { merge: true }));
+  S.swaps.filter(x => x.fromUid === id || x.takenBy === id).forEach(x => batch.update(doc(db, 'swaps', x.id), { status: 'cancelled', updatedAt: now }));
+  await batch.commit(); closeModal();
+  toast(`${fullName(u)} retiré de l'équipe` + (shifts.length ? ` · ${shifts.length} quart${shifts.length > 1 ? 's' : ''} à venir supprimé${shifts.length > 1 ? 's' : ''}` : ''));
+}
+// Propriétaire : efface le profil, les coordonnées, le taux et les disponibilités
+async function purgeUser(id) {
+  const u = userById(id); if (!u || u.status === 'active') return;
+  const batch = writeBatch(db);
+  ['users', 'contacts', 'wages', 'availability'].forEach(c => batch.delete(doc(db, c, id)));
+  await batch.commit(); toast(`${fullName(u)} supprimé définitivement`);
+}
 async function saveProfile() {
   const first = val('pf-first'), last = val('pf-last'), phone = val('pf-phone');
   if (!first || !last) return toast('Prénom et nom requis.', 'bad');
@@ -1257,6 +1283,10 @@ document.addEventListener('click', async e => {
       case 'refuseUser': S.confirm = null; await updateDoc(doc(db, 'users', id), { status: 'refused', updatedAt: nowISO() }); toast('Compte refusé'); break;
       case 'reactivate': await updateDoc(doc(db, 'users', id), { status: 'active', updatedAt: nowISO() }); toast('Compte activé'); break;
       case 'editUserAsk': openModal({ kind: 'edit', id }); break;
+      case 'removeUserAsk': S.confirm = 'rmUser'; renderModal(); break;
+      case 'removeUser': await removeUser(id); break;
+      case 'purgeAsk': S.confirm = 'purge' + id; render(true); break;
+      case 'purgeUser': S.confirm = null; await purgeUser(id); break;
       case 'swatch': document.querySelectorAll('.swatch').forEach(b => b.setAttribute('aria-pressed', String(b === el))); $('#u-color').value = el.dataset.v; break;
       case 'copy': await copyText(el.dataset.v); break;
       case 'feed': openModal({ kind: 'feed' }); markFeedRead(); render(true); break;
