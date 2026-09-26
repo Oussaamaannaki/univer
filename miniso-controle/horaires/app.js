@@ -2,7 +2,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js';
 import {
   initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
-  sendEmailVerification, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential,
+  sendEmailVerification, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential, applyActionCode, verifyPasswordResetCode, confirmPasswordReset,
   EmailAuthProvider, linkWithCredential, connectAuthEmulator, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult
 } from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
 import {
@@ -454,7 +454,18 @@ function viewAuth() {
       ${lineField('rs-email', 'Adresse courriel', 'email', 'email', dv('rs-email', email))}
       ${msgHtml()}
       <button class="btn red btn-xl block" type="submit">Envoyer le lien</button>
-    </form>`);
+    </form>
+    ${S.resetSent ? pasteHelp('rs-link', 'Continuer avec ce lien', 'pasteReset') : ''}`);
+  if (v === 'newpw') return authLayout(`
+    <h1 class="auth-title">Nouveau mot de passe</h1>
+    <p class="auth-lead">${S.oob && S.oob.email ? `Compte : <b>${esc(S.oob.email)}</b>. ` : ''}Choisissez votre nouveau mot de passe (8 caractères minimum).</p>
+    <form data-form="newpw" class="auth-form" novalidate>
+      ${lineField('np-pw', 'Nouveau mot de passe', 'password', 'new-password', '')}
+      ${lineField('np-pw2', 'Confirmer le mot de passe', 'password', 'new-password', '')}
+      ${msgHtml()}
+      <button class="btn red btn-xl block" type="submit">Enregistrer et me connecter</button>
+    </form>
+    <div class="auth-alt"><button type="button" class="link-alt muted-link" data-act="authView" data-v="email">Annuler</button></div>`);
   if (v === 'password' && email) return authLayout(`
     <h1 class="auth-title">Connexion</h1>
     <div class="who-chip"><span>${esc(email)}</span><button type="button" class="link-alt" data-act="authView" data-v="email">Modifier</button></div>
@@ -507,8 +518,22 @@ function viewPending() {
 function verifBlock() {
   if (S.user.emailVerified) return `<div class="alert ok">${svg(IC.check, 16)}<span>Courriel confirmé : ${esc(S.user.email)}</span></div>`;
   return `<div class="alert warn">${svg(IC.alert, 16)}<span>Un courriel de confirmation a été envoyé à <b>${esc(S.user.email)}</b>. Ouvrez-le et touchez le lien (vérifiez aussi les courriels indésirables).</span></div>
-    <div class="row"><button class="btn red" data-act="checkVerif">J'ai confirmé mon courriel</button><button class="btn" data-act="resendVerif">Renvoyer le courriel</button></div>`;
+    <div class="row"><button class="btn red" data-act="checkVerif">J'ai confirmé mon courriel</button><button class="btn" data-act="resendVerif">Renvoyer le courriel</button></div>
+    ${pasteHelp('vf-link', 'Confirmer mon courriel', 'pasteVerif')}`;
 }
+// Le lien du courriel ne s'ouvre pas (courriel dans les indésirables : Gmail y désactive les liens)
+function pasteHelp(id, label, act) {
+  return `<details class="paste-help" ${S.pasteOpen ? 'open' : ''}><summary>Le lien du courriel ne s'ouvre pas ?</summary>
+    <p class="fine">Gmail désactive les liens des courriels classés dans <b>Indésirables</b>. Touchez « Signaler comme non-spam » : le lien redevient cliquable.<br>
+    Ou bien : maintenez le doigt sur le texte du lien dans le courriel, <b>copiez-le</b> au complet, puis collez-le ici.</p>
+    <div class="field"><label for="${id}">Lien reçu par courriel</label><textarea class="input" id="${id}" rows="3" placeholder="https://miniso-horaires-cah5.firebaseapp.com/__/auth/action?mode=…" autocapitalize="off" spellcheck="false"></textarea></div>
+    <button type="button" class="btn red block" data-act="${act}">${label}</button></details>`;
+}
+const parseAction = txt => {
+  const t = String(txt || '').replace(/\s+/g, '').replace(/&amp;/g, '&');
+  const code = (t.match(/oobCode=([^&#]+)/) || [])[1], mode = (t.match(/mode=([a-zA-Z]+)/) || [])[1];
+  return code ? { code: decodeURIComponent(code), mode: mode || '' } : null;
+};
 
 /* ----- Semaine ----- */
 function weekBar() {
@@ -1047,7 +1072,7 @@ async function doGoogle() {
 async function doReset() {
   const email = val('rs-email');
   if (!email) return showMsg('err', 'Entrez votre courriel.');
-  try { await withContinue(s => sendPasswordResetEmail(auth, email, s)); showMsg('ok', `Si un compte existe pour ${email}, un courriel de réinitialisation vient d'être envoyé.`); }
+  try { await withContinue(s => sendPasswordResetEmail(auth, email, s)); S.resetSent = true; S.pasteOpen = false; showMsg('ok', `Si un compte existe pour ${email}, un courriel vient d'être envoyé. Vérifiez aussi les courriels indésirables.`); }
   catch (e) { showMsg('err', authErr(e)); }
 }
 async function createProfile(user, first, last, phone) {
@@ -1077,6 +1102,42 @@ async function doComplete() {
   if (!first || !last) return toast('Entrez votre prénom et votre nom.', 'bad');
   if (!$('#cp-consent').checked) return toast('Cochez la case de consentement pour continuer.', 'bad');
   await createProfile(S.user, first, last, phone); clearDraft('cp-');
+}
+// Liens des courriels (confirmation, nouveau mot de passe), ouverts dans l'app ou collés à la main
+async function useAction(a, expect) {
+  if (!a) return showMsgOrToast("Lien non reconnu. Copiez le lien au complet, de « https » jusqu'à la fin.");
+  if (expect && a.mode && a.mode !== expect) return showMsgOrToast(expect === 'verifyEmail' ? 'Ce lien sert à changer le mot de passe, pas à confirmer le courriel.' : 'Ce lien sert à confirmer le courriel, pas à changer le mot de passe.');
+  const mode = a.mode || expect;
+  try {
+    if (mode === 'resetPassword') {
+      const email = await verifyPasswordResetCode(auth, a.code);
+      S.oob = { code: a.code, email }; S.msg = null; S.authView = 'newpw'; S.draft['li-email'] = email;
+      if (S.user) await signOut(auth); render(true);
+    } else {
+      await applyActionCode(auth, a.code);
+      if (auth.currentUser) { await auth.currentUser.reload(); await auth.currentUser.getIdToken(true); startSession(auth.currentUser); }
+      else showMsg('ok', 'Courriel confirmé. Connectez-vous.');
+      toast('Courriel confirmé');
+    }
+  } catch (e) {
+    showMsgOrToast(/expired|invalid-action-code/.test(String(e.code)) ? 'Ce lien a expiré ou a déjà été utilisé. Demandez un nouveau courriel.' : authErr(e));
+  }
+}
+const showMsgOrToast = t => S.user ? toast(t, 'bad') : showMsg('err', t);
+async function saveNewPw() {
+  const a = $('#np-pw').value, b = $('#np-pw2').value;
+  if (a.length < 8) return showMsg('err', 'Mot de passe trop faible : 8 caractères minimum.');
+  if (a !== b) return showMsg('err', 'Les deux mots de passe ne correspondent pas.');
+  try {
+    await confirmPasswordReset(auth, S.oob.code, a);
+    const email = S.oob.email; S.oob = null; S.resetSent = false; S.msg = null;
+    await signInWithEmailAndPassword(auth, email, a);
+    toast('Mot de passe changé');
+  } catch (e) { showMsg('err', /expired|invalid-action-code/.test(String(e.code)) ? 'Ce lien a expiré ou a déjà été utilisé. Demandez un nouveau courriel.' : authErr(e)); }
+}
+{ // Lien ouvert directement dans l'app (?mode=…&oobCode=…)
+  const a = parseAction(location.search);
+  if (a && configured) { history.replaceState(null, '', location.pathname + location.hash); auth.authStateReady().then(() => setTimeout(() => useAction(a), 300)); }
 }
 async function checkVerif() {
   await S.user.reload();
@@ -1207,7 +1268,7 @@ async function saveUser(form, approve) {
 const futureShifts = async uid => (await getDocs(query(collection(db, 'shifts'), where('uid', '==', uid)))).docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.date >= today());
 const futureShiftsCount = uid => S.shifts.filter(x => x.uid === uid && x.date >= today()).length || 'le cas échéant';
 // Employé qui a quitté : accès coupé, quarts à venir retirés, historique conservé
-document.addEventListener('toggle', e => { if (e.target.id === 'old-staff') S.oldOpen = e.target.open; }, true);
+document.addEventListener('toggle', e => { if (e.target.id === 'old-staff') S.oldOpen = e.target.open; if (e.target.classList && e.target.classList.contains('paste-help')) S.pasteOpen = e.target.open; }, true);
 async function removeUser(id) {
   const u = userById(id); if (!u) return closeModal();
   const now = nowISO(), shifts = await futureShifts(id), batch = writeBatch(db);
@@ -1295,8 +1356,10 @@ document.addEventListener('click', async e => {
       case 'nav': S.view = el.dataset.v; ls.set('view', S.view); S.confirm = null; S.setDraft = null; render(true); window.scrollTo(0, 0); break;
       case 'authView': S.authView = el.dataset.v; S.msg = null; render(true); break;
       case 'google': await doGoogle(); break;
-      case 'logout': S.view = null; await signOut(auth); break;
+      case 'logout': S.view = null; S.authView = 'email'; S.msg = null; S.pasteOpen = false; S.resetSent = false; if (location.hash) history.replaceState(null, '', location.pathname); await signOut(auth); break;
       case 'checkVerif': await checkVerif(); break;
+      case 'pasteVerif': S.pasteOpen = true; await useAction(parseAction($('#vf-link').value), 'verifyEmail'); break;
+      case 'pasteReset': S.pasteOpen = true; await useAction(parseAction($('#rs-link').value), 'resetPassword'); break;
       case 'resendVerif': await sendVerif(S.user); toast('Courriel de confirmation renvoyé'); break;
       case 'wk': { const v = Number(el.dataset.v); S.week = v === 0 ? weekOf(today()) : addDays(S.week, 7 * v); S.confirm = null; subWeek(); render(true); break; }
       case 'goDay': { const x = document.getElementById('d-' + el.dataset.v); if (x) { x.scrollIntoView({ behavior: 'smooth', block: 'start' }); x.classList.remove('flash'); void x.offsetWidth; x.classList.add('flash'); } break; }
@@ -1357,6 +1420,7 @@ document.addEventListener('submit', async e => {
       case 'login': await doLogin(); break;
       case 'signup': await doSignup(); break;
       case 'reset': await doReset(); break;
+      case 'newpw': await saveNewPw(); break;
       case 'complete': await doComplete(); break;
       case 'shift': await saveShift(); break;
       case 'offer': await offerSwap(f); break;

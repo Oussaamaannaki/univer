@@ -326,3 +326,9 @@ button.prow:hover{background:var(--sunken)}
 .sc-m{font-size:13.5px;color:var(--ink-3);display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px}
 .sc-who{font-weight:800;color:var(--ink-2)}
 .sc-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.paste-help{margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:0 14px;text-align:left}
+.paste-help summary{cursor:pointer;padding:12px 0;font-weight:800;color:var(--ink-2);list-style-position:inside}
+.paste-help[open]{padding-bottom:14px}
+.paste-help .fine{margin:0 0 10px}
+.paste-help textarea{width:100%;resize:vertical;font-size:14px;word-break:break-all}
+.paste-help .field{margin-bottom:10px}
