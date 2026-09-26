@@ -355,6 +355,24 @@ function notifCard(compact) {
   return `<div class="alert ${msg[0]}">${svg(IC.bell, 16)}<span>${msg[1]}</span></div>${st === 'off' ? `<button class="btn red" data-act="notifOn">${svg(IC.bell, 16)} Activer les notifications</button>` : st === 'on' ? `<button class="btn sm" data-act="notifTest">Envoyer une notification test</button>` : ''}`;
 }
 
+/* ---------------- Clavier iPhone ---------------- */
+// Le clavier d'iOS décale la barre du bas : on la cache pendant la saisie et on recale l'écran à la fermeture
+const kbField = el => !!el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !/^(checkbox|radio|button|submit|color|range|hidden)$/.test(el.type);
+document.addEventListener('focusin', e => { if (kbField(e.target)) document.body.classList.add('kb-open'); });
+document.addEventListener('focusout', () => setTimeout(() => {
+  if (kbField(document.activeElement)) return;
+  document.body.classList.remove('kb-open');
+  window.scrollTo(window.scrollX, window.scrollY);
+}, 100));
+if (window.visualViewport) {
+  let vh = window.visualViewport.height;
+  window.visualViewport.addEventListener('resize', () => {
+    const h = window.visualViewport.height;
+    if (h > vh + 100 && !kbField(document.activeElement)) { document.body.classList.remove('kb-open'); window.scrollTo(window.scrollX, window.scrollY); }
+    vh = h;
+  });
+}
+
 /* ---------------- Rendu ---------------- */
 function isTyping() {
   const a = document.activeElement;

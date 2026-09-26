@@ -338,3 +338,4 @@ button.prow:hover{background:var(--sunken)}
 details.fold>summary h2{display:flex;align-items:center;gap:8px}
 details.fold>summary>svg{transition:transform .2s}
 details.fold[open]>summary>svg{transform:rotate(90deg)}
+body.kb-open .bottom{display:none!important}
