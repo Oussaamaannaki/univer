@@ -146,7 +146,16 @@ function sub(key, make) { unsub(key); try { subs[key] = make(); } catch (e) { co
 function unsub(key) { if (subs[key]) { try { subs[key](); } catch (e) { } delete subs[key]; } }
 function unsubAll() { Object.keys(subs).forEach(unsub); }
 function stopAppSubs() { Object.keys(subs).forEach(k => { if (k !== 'me' && k !== 'myContact') unsub(k); }); }
-const onErr = key => e => { console.warn('Firestore', key, e && e.code); if (e && e.code !== 'permission-denied') toast('Connexion perdue. Vérifiez Internet.', 'bad'); };
+const onErr = key => e => { console.warn('Firestore', key, e && e.code); if (e && e.code === 'permission-denied') recheckProfile(); else toast('Connexion perdue. Vérifiez Internet.', 'bad'); };
+// Accès refusé : on relit son propre profil (compte désactivé ou rôle changé) pour afficher le bon écran
+let recheckT = null;
+function recheckProfile() {
+  clearTimeout(recheckT);
+  recheckT = setTimeout(async () => {
+    if (!S.user) return;
+    try { const snap = await getDoc(doc(db, 'users', S.user.uid)); S.profile = snap.exists() ? snap.data() : null; onProfile(); } catch (e) { }
+  }, 400);
+}
 
 /* ---------------- Rôles ---------------- */
 const isOwnerEmail = u => !!u && String(u.email || '').toLowerCase() === OWNER;
@@ -511,13 +520,43 @@ function weekBar() {
     ${S.week !== weekOf(today()) ? `<button class="btn sm ghost" data-act="wk" data-v="0">Cette semaine</button>` : ''}
   </div>`;
 }
+/* ----- Vue verticale (jour par jour) ----- */
+const MONTHS_LONG = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const dayAbbr = d => DAYS[parse(d).getDay()].replace('.', '');
+function weekStrip(total) {
+  const days = weekDays(S.week), t = today(), a = parse(days[0]), b = parse(days[6]);
+  const month = a.getMonth() === b.getMonth() ? `${cap(MONTHS_LONG[a.getMonth()])} ${a.getFullYear()}` : `${cap(MONTHS_LONG[a.getMonth()])} – ${MONTHS_LONG[b.getMonth()]} ${b.getFullYear()}`;
+  const range = a.getMonth() === b.getMonth() ? `${a.getDate()} – ${b.getDate()} ${MONTHS[b.getMonth()]}` : `${a.getDate()} ${MONTHS[a.getMonth()]} – ${b.getDate()} ${MONTHS[b.getMonth()]}`;
+  return `<section class="wk-card">
+    <div class="wk-top"><b class="wk-month">${month}</b>${S.week !== weekOf(t) ? `<button class="btn sm ghost" data-act="wk" data-v="0">Aujourd'hui</button>` : ''}</div>
+    <div class="wk-strip">
+      <button class="wk-arrow" data-act="wk" data-v="-1" aria-label="Semaine précédente">${svg(IC.left, 20)}</button>
+      ${days.map(d => `<button class="wk-day ${d === t ? 'today' : ''}" data-act="goDay" data-v="${d}" aria-label="${esc(cap(fmtLong(d)))}"><span>${dayAbbr(d)}</span><b>${parse(d).getDate()}</b></button>`).join('')}
+      <button class="wk-arrow" data-act="wk" data-v="1" aria-label="Semaine suivante">${svg(IC.right, 20)}</button>
+    </div>
+    <div class="wk-sum"><span>${range}</span><b>${fmtDur(total)}</b></div></section>`;
+}
+function dayRows(body) {
+  const t = today();
+  return `<div class="days">${weekDays(S.week).map(d => `<div class="day ${d === t ? 'today' : ''} ${d < t ? 'past' : ''}" id="d-${d}">
+    <div class="day-date"><b>${parse(d).getDate()}</b><span>${dayAbbr(d)}</span></div><div class="day-body">${body(d)}</div></div>`).join('')}</div>`;
+}
+const dayEmpty = (d, txt) => `<p class="day-empty">${d === today() ? "Pas de quart aujourd'hui, profitez-en !" : txt || 'Aucun quart prévu.'}</p>`;
+function shiftCard(s, o = {}) {
+  const p = posOf(s.position), u = o.who ? userById(s.uid) : null;
+  const open = o.click ? `button type="button" data-act="editShift" data-id="${s.id}"` : 'div', close = o.click ? 'button' : 'div';
+  return `<${open} class="sc ${o.lvl || ''} ${o.mine ? 'mine' : ''}" style="--pc:${esc(p.color)}">
+    <span class="sc-t"><b>${fmtT(s.start)} – ${fmtT(s.end)}</b>${o.mod ? '<i class="mod">Modifié</i>' : ''}${o.lvl === 'err' ? `<i class="sc-flag">${svg(IC.alert, 14)}</i>` : ''}</span>
+    <span class="sc-m">${u ? `<span class="sc-who"><i class="pdot" style="background:${esc(u.color || '#888')}"></i>${esc(o.mine ? 'Vous' : shortName(u))}</span><span>·</span>` : ''}<span>${esc(p.name)}</span><span>·</span><span>${fmtDur(paidMin(s))}</span>${s.note ? `<span>· ${esc(s.note)}</span>` : ''}</span>
+    ${o.act ? `<span class="sc-act">${o.act}</span>` : ''}</${close}>`;
+}
 function gridHtml(mgr) {
-  const days = weekDays(S.week), people = activeUsers(), byU = {}, issues = [], dayTot = days.map(() => 0);
+  const days = weekDays(S.week), people = activeUsers(), byU = {}, issues = [], dayTot = days.map(() => 0), lv = {};
   S.shifts.forEach(s => (byU[s.uid] = byU[s.uid] || []).push(s));
   const pub = !!(S.weekDoc && S.weekDoc.published);
   const rows = people.map(u => {
     const us = byU[u.id] || [], offs = mgr ? offsFor(u.id) : [], iss = {};
-    if (mgr) us.forEach(s => { iss[s.id] = shiftIssues(s, us, S.avail[u.id], offs); iss[s.id].forEach(i => issues.push({ who: u, when: s, ...i })); });
+    if (mgr) us.forEach(s => { iss[s.id] = shiftIssues(s, us, S.avail[u.id], offs); lv[s.id] = worst(iss[s.id]); iss[s.id].forEach(i => issues.push({ who: u, when: s, ...i })); });
     const wk = mgr ? weekIssues(u.id, us, S.avail[u.id]) : { paid: us.reduce((a, s) => a + paidMin(s), 0), issues: [] };
     wk.issues.forEach(i => issues.push({ who: u, ...i }));
     us.forEach(s => { const i = days.indexOf(s.date); if (i >= 0) dayTot[i] += paidMin(s); });
@@ -540,7 +579,7 @@ function gridHtml(mgr) {
   const table = `<div class="grid-wrap"><table class="sched"><thead><tr><th class="who">Équipe</th>${head}</tr></thead>
     <tbody>${rows || `<tr><td colspan="8" class="empty">${mgr ? 'Aucun employé actif. Approuvez les comptes dans « Équipe ».' : 'Aucun quart cette semaine.'}</td></tr>`}</tbody>
     <tfoot><tr><th class="who">Total</th>${dayTot.map(m => `<td>${m ? fmtDur(m) : '—'}</td>`).join('')}</tr></tfoot></table></div>`;
-  return { table, issues, total: dayTot.reduce((a, b) => a + b, 0) };
+  return { table, issues, lv, total: dayTot.reduce((a, b) => a + b, 0) };
 }
 
 /* ----- Gérant : bâtir l'horaire ----- */
@@ -572,22 +611,23 @@ function viewScheduleMgr() {
 
 /* ----- Employé : mon horaire / équipe ----- */
 function viewMine() {
-  const t = today(), w0 = weekOf(t), me = S.user.uid;
+  const t = today(), me = S.user.uid;
   const mine = S.myShifts.filter(s => s.uid === me).sort(byDT);
   const next = mine.find(s => s.date > t || (s.date === t && endMin(s) > toMin(new Date().toTimeString().slice(0, 5))));
   const bySh = {};
   [...S.swaps, ...S.swapsFrom].forEach(x => { if (x.fromUid === me && (x.status === 'open' || x.status === 'taken')) bySh[x.shiftId] = x; });
   const pend = S.timeoff.filter(o => o.status === 'pending').length;
-  const weeks = [[w0, 'Cette semaine'], [addDays(w0, 7), 'Semaine prochaine'], [addDays(w0, 14), 'Dans deux semaines']];
+  const list = S.shifts.filter(s => s.uid === me), pub = !!(S.weekDoc && S.weekDoc.published) || list.length > 0;
+  const total = list.reduce((a, s) => a + paidMin(s), 0);
+  const act = s => { const sw = bySh[s.id]; return sw ? `<span class="pill warn">${sw.status === 'open' ? 'Offert' : `Pris par ${esc(nameOf(sw.takenBy))} · en attente`}</span>`
+    : s.date < t ? '' : `<button class="btn sm" data-act="offerAsk" data-id="${s.id}">${svg(IC.swap, 14)} Offrir</button>`; };
   return `<div class="page-head"><div><span class="eyebrow">${esc(cap(fmtLong(t)))}</span><h1>Bonjour ${esc(S.profile.firstName)}</h1></div></div>
     ${S.notif && S.notif !== 'on' && S.notif !== 'unsupported' ? `<section class="card"><div class="card-b">${notifCard(true)}</div></section>` : ''}
-    ${next ? nextCard(next) : `<div class="card empty-card">${svg(IC.cal, 28)}<p>Aucun quart à venir dans l'horaire publié.</p></div>`}
+    ${next ? nextCard(next) : ''}
     ${pend ? `<div class="alert warn">${svg(IC.clock, 16)}<span>${pend} demande${pend > 1 ? 's' : ''} de congé en attente d'approbation.</span></div>` : ''}
-    ${weeks.map(([w, label]) => {
-      const list = mine.filter(s => s.weekId === w), pub = S.myWeeks[w] && S.myWeeks[w].published, tot = list.reduce((a, s) => a + paidMin(s), 0);
-      return `<section class="card"><div class="card-h"><h2>${label} <small class="muted">${fmtDay(w)} – ${fmtDay(addDays(w, 6))}</small></h2><span class="pill ${pub ? 'ok' : 'na'}">${pub ? fmtDur(tot) : 'Pas encore publié'}</span></div>
-        ${!pub ? `<div class="empty">La direction n'a pas encore publié cet horaire.</div>` : list.length ? list.map(s => shiftRow(s, bySh[s.id])).join('') : `<div class="empty">Aucun quart cette semaine.</div>`}</section>`;
-    }).join('')}`;
+    ${weekStrip(total)}
+    ${pub ? dayRows(d => { const l = list.filter(s => s.date === d).sort(byDT); return l.length ? l.map(s => shiftCard(s, { act: act(s) })).join('') : dayEmpty(d); })
+      : `<div class="card empty-card">${svg(IC.cal, 28)}<p>La direction n'a pas encore publié l'horaire de cette semaine.</p></div>`}`;
 }
 function nextCard(s) {
   const p = posOf(s.position), d = daysBetween(today(), s.date);
@@ -606,8 +646,10 @@ function shiftRow(s, sw) {
 }
 function viewTeam() {
   const pub = !!(S.weekDoc && S.weekDoc.published);
-  return `<div class="page-head"><div><span class="eyebrow">Équipe</span><h1>Horaire de l'équipe</h1></div></div>${weekBar()}
-    ${pub ? gridHtml(false).table : `<div class="card empty-card">${svg(IC.cal, 28)}<p>L'horaire de cette semaine n'est pas encore publié.</p></div>`}`;
+  const me = S.user.uid, total = S.shifts.reduce((a, s) => a + paidMin(s), 0);
+  return `<div class="page-head"><div><span class="eyebrow">Équipe</span><h1>Horaire complet</h1></div></div>${weekStrip(total)}
+    ${pub || S.shifts.length ? dayRows(d => { const l = S.shifts.filter(s => s.date === d).sort(byDT); return l.length ? l.map(s => shiftCard(s, { who: true, mine: s.uid === me })).join('') : `<p class="day-empty">Personne à l'horaire.</p>`; })
+      : `<div class="card empty-card">${svg(IC.cal, 28)}<p>L'horaire de cette semaine n'est pas encore publié.</p></div>`}`;
 }
 
 /* ----- Employé : échanges ----- */
@@ -1169,12 +1211,14 @@ document.addEventListener('toggle', e => { if (e.target.id === 'old-staff') S.ol
 async function removeUser(id) {
   const u = userById(id); if (!u) return closeModal();
   const now = nowISO(), shifts = await futureShifts(id), batch = writeBatch(db);
-  batch.update(doc(db, 'users', id), { status: 'inactive', updatedAt: now });
   const weeks = new Set();
   shifts.forEach(x => { batch.delete(doc(db, 'shifts', x.id)); if (x.published) weeks.add(x.weekId); });
   weeks.forEach(w => batch.set(doc(db, 'weeks', w), { changedUids: arrayUnion(id), updatedAt: now }, { merge: true }));
   S.swaps.filter(x => x.fromUid === id || x.takenBy === id).forEach(x => batch.update(doc(db, 'swaps', x.id), { status: 'cancelled', updatedAt: now }));
-  await batch.commit(); closeModal();
+  // Quarts retirés d'abord (l'app de l'employé se met à jour), puis l'accès est coupé
+  await batch.commit();
+  await updateDoc(doc(db, 'users', id), { status: 'inactive', updatedAt: nowISO() });
+  closeModal();
   toast(`${fullName(u)} retiré de l'équipe` + (shifts.length ? ` · ${shifts.length} quart${shifts.length > 1 ? 's' : ''} à venir supprimé${shifts.length > 1 ? 's' : ''}` : ''));
 }
 // Propriétaire : efface le profil, les coordonnées, le taux et les disponibilités
@@ -1255,6 +1299,7 @@ document.addEventListener('click', async e => {
       case 'checkVerif': await checkVerif(); break;
       case 'resendVerif': await sendVerif(S.user); toast('Courriel de confirmation renvoyé'); break;
       case 'wk': { const v = Number(el.dataset.v); S.week = v === 0 ? weekOf(today()) : addDays(S.week, 7 * v); S.confirm = null; subWeek(); render(true); break; }
+      case 'goDay': { const x = document.getElementById('d-' + el.dataset.v); if (x) { x.scrollIntoView({ behavior: 'smooth', block: 'start' }); x.classList.remove('flash'); void x.offsetWidth; x.classList.add('flash'); } break; }
       case 'newShift': openModal({ kind: 'shift', id: null, uid: el.dataset.uid, date: el.dataset.date }); break;
       case 'editShift': openModal({ kind: 'shift', id }); break;
       case 'preset': { const p = S.settings.presets[Number(el.dataset.i)]; $('#sh-start').value = p.start; $('#sh-end').value = p.end; $('#sh-break').value = String(Number(p.breakMin) || 0); S.breakTouched = true; updShiftSum(); break; }
