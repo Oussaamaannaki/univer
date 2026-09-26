@@ -753,7 +753,7 @@ function viewStaff() {
     <section class="card"><div class="card-h"><h2>Équipe active</h2><span class="fine">Semaine du ${fmtDay(S.week)}</span></div>
       ${active.map(u => { const c = ct(u.id), w = S.wages[u.id]; return `<button class="prow" data-act="editUserAsk" data-id="${u.id}"><span class="avatar" style="--c:${esc(u.color || '#777')}">${esc(initials(u))}</span>
         <div class="main"><b>${esc(fullName(u))} ${u.role === 'manager' ? '<span class="pill red">Gérant</span>' : ''}</b>
-        <span class="m">${esc(u.position ? posOf(u.position).name : 'Poste à définir')} · ${fmtDur(hrs(u.id))} cette semaine${w != null ? ' · ' + money(w) + '/h' : ''}</span>
+        <span class="m">${esc(u.position ? posOf(u.position).name : u.role === 'manager' ? 'Direction du magasin' : 'Poste à définir')} · ${fmtDur(hrs(u.id))} cette semaine${w != null ? ' · ' + money(w) + '/h' : ''}</span>
         <span class="m">${esc(c.email || '')}${c.phone ? ' · ' + esc(c.phone) : ''}</span></div>${svg(IC.right, 18)}</button>`; }).join('') || `<div class="empty">Aucun employé actif.</div>`}</section>
     ${others.length ? `<details class="card" id="old-staff" ${S.oldOpen ? 'open' : ''}><summary class="card-h"><h2>Anciens employés et comptes refusés (${others.length})</h2>${svg(IC.right, 18)}</summary>
       ${others.map(u => `<div class="prow"><span class="avatar" style="--c:#999">${esc(initials(u))}</span><div class="main"><b>${esc(fullName(u))}</b><span class="m">${u.status === 'refused' ? 'Refusé' : 'Inactif'} · ${esc(ct(u.id).email || '')}</span></div><div class="acts"><button class="btn sm" data-act="reactivate" data-id="${u.id}">Réactiver</button>${isOwner() ? (S.confirm === 'purge' + u.id ? `<button class="btn sm danger" data-act="purgeUser" data-id="${u.id}">Supprimer pour de bon</button><button class="btn sm" data-act="cancelConfirm">Annuler</button>` : `<button class="btn sm ghost" data-act="purgeAsk" data-id="${u.id}" aria-label="Supprimer définitivement">${svg(IC.trash, 16)}</button>`) : ''}</div></div>`).join('')}</details>` : ''}`;
@@ -833,6 +833,8 @@ function viewProfile() {
       <button class="btn sm" data-act="addPreset">${svg(IC.plus, 14)} Ajouter un quart type</button>
       <div class="row"><button class="btn red" data-act="saveSettings">Enregistrer les réglages</button></div>
     </div></section>` : ''}
+    <section class="card"><div class="card-b"><b>Mise à jour de l'application</b><p class="muted">Charge la dernière version publiée. L'app vous avertit aussi d'elle-même quand une nouvelle version est prête.</p>
+      <button class="btn block" data-app-update>${svg(IC.clock, 16)} Mettre à jour l'application</button></div></section>
     <button class="btn block" data-act="logout">${svg(IC.out, 16)} Se déconnecter</button>
     <p class="fine" style="text-align:center">MINISO · ${esc(C.store.code)} ${esc(C.store.name)} · Horaires</p>`;
 }

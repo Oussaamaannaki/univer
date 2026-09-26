@@ -441,6 +441,7 @@
       acc('res', ['#E3F3E6', '#2F7D3E'], IC.link, t('resources'), t('resourcesSub'), res) +
       acc('rep', ['#FFF4D6', '#9A6B00'], IC.chart, t('reports'), `${A.reports.length} ${t('reportsN')}`, repBody) +
       acc('sup', ['#FBE3E6', '#B0001A'], IC.lock, t('supervisor'), A.sup ? '✓' : t('protected'), supBody) +
+      `<button class="btn block" style="margin-top:6px" data-app-update>Mettre à jour l'application</button>` +
       `<div class="drawer-foot">MINISO · ${esc(storeLabel(A.cfg.stores[0]?.code))} · ${t('footer')}</div>`;
     if (A.acc.comms && unread) { A.readMsgs = [...new Set([...A.readMsgs, ...A.messages.map(m => m.id)])]; ls.set('readMsgs', A.readMsgs); $('#menuBadge').hidden = true; }
   }
