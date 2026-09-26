@@ -4,12 +4,12 @@
  */
 window.HORAIRES_CONFIG = {
   firebase: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: ''
+    apiKey: 'AIzaSyDPppcThkHBh8pdYmkiyv-SFBwoMG3y_OE',
+    authDomain: 'miniso-horaires-cah5.firebaseapp.com',
+    projectId: 'miniso-horaires-cah5',
+    storageBucket: 'miniso-horaires-cah5.firebasestorage.app',
+    messagingSenderId: '31960070364',
+    appId: '1:31960070364:web:4e39c04bd939c339b21c19'
   },
 
   // Compte propriétaire : ce courriel devient automatiquement gérant après confirmation.
