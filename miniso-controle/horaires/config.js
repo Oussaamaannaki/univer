@@ -16,6 +16,9 @@ window.HORAIRES_CONFIG = {
   // Doit être identique au courriel inscrit dans firestore.rules.
   ownerEmail: 'annakioussama99@gmail.com',
 
+  // Bouton « Continuer avec Google » (activer Google dans Firebase > Authentication)
+  googleSignIn: true,
+
   store: { code: 'CAH5', name: 'Galeries de Granby' },
 
   // Premier jour de la semaine d'horaire : 0 = dimanche, 1 = lundi. Ne pas changer après le premier horaire.

@@ -3,7 +3,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.3.0/firebas
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
   sendEmailVerification, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential,
-  EmailAuthProvider, connectAuthEmulator
+  EmailAuthProvider, connectAuthEmulator, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult
 } from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
 import {
   getFirestore, connectFirestoreEmulator, doc, getDoc, getDocs, setDoc, updateDoc, addDoc,
@@ -109,7 +109,7 @@ const NAV_EMP = [['mine', 'Mon horaire', 'cal'], ['team', 'Équipe', 'team'], ['
 
 const S = {
   authReady: false, user: null, profile: undefined, contact: null, signingUp: false,
-  view: ls.get('view', null), authView: location.hash === '#inscription' ? 'signup' : 'login', msg: null,
+  view: ls.get('view', null), authView: location.hash === '#inscription' ? 'signup' : 'email', msg: null,
   week: weekOf(today()), subKey: '', draft: {}, confirm: null, modal: null, pendingRender: false,
   readFeed: ls.get('readFeed', []), issuesOpen: false, reqTab: 'conges'
 };
@@ -252,6 +252,7 @@ async function syncVerified() {
   }
 }
 if (configured) {
+  getRedirectResult(auth).catch(e => { if (e && e.code && e.code !== 'auth/no-auth-event') showMsg('err', authErr(e)); });
   onAuthStateChanged(auth, async user => {
     if (user && isOwnerEmail(user) && user.emailVerified) { try { await user.getIdToken(true); } catch (e) { } }
     startSession(user);
@@ -273,8 +274,8 @@ function render(force) {
   else if (!S.authReady || S.signingUp) html = splash();
   else if (!S.user) html = viewAuth();
   else if (S.profile === undefined) html = splash();
-  else if (S.profile === null) html = shell(viewCompleteProfile(), false);
-  else if (!isActive()) html = shell(viewPending(), false);
+  else if (S.profile === null) html = viewCompleteProfile();
+  else if (!isActive()) html = viewPending();
   else {
     const nav = isManager() ? NAV_MGR : NAV_EMP;
     if (!nav.some(n => n[0] === S.view)) S.view = nav[0][0];
@@ -311,76 +312,105 @@ function navBadges() {
 }
 
 /* ----- Écrans de connexion ----- */
+const GOOGLE_G = '<svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>';
+const googleOn = () => C.googleSignIn !== false;
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+function authLayout(inner) {
+  return `<div class="auth">
+    <svg class="auth-mark" viewBox="0 0 400 400" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="20" stroke-linejoin="round" stroke-linecap="round" transform="rotate(-14 200 200)"><rect x="66" y="92" width="268" height="244" rx="36"/><path d="M66 164h268M142 52v72M258 52v72"/><rect x="118" y="214" width="56" height="44" rx="10"/><rect x="226" y="214" width="56" height="44" rx="10"/></g></svg>
+    <div class="auth-top"><span class="wm">MINISO</span><span class="wm-sub">Horaires · ${esc(C.store.code)} ${esc(C.store.name)}</span></div>
+    <div class="auth-main">${inner}</div>
+    <p class="auth-legal">${svg(IC.lock, 13)} Accès réservé à l'équipe du magasin ${esc(C.store.code)}.</p>
+  </div>`;
+}
+const msgHtml = () => S.msg ? `<div class="alert ${S.msg.kind}">${svg(S.msg.kind === 'ok' ? IC.check : IC.alert, 16)}<span>${esc(S.msg.text)}</span></div>` : '';
+const googleBtn = label => googleOn() ? `<button type="button" class="btn-google" data-act="google">${GOOGLE_G}<span>${label}</span></button>` : '';
+function lineField(id, label, type, ac, value) {
+  const extra = type === 'email' ? ' inputmode="email" autocapitalize="off" spellcheck="false"' : type === 'tel' ? ' inputmode="tel"' : '';
+  return `<div class="line-field"><label class="sr" for="${id}">${esc(label)}</label><input class="line" id="${id}" type="${type}" placeholder="${esc(label)}" autocomplete="${ac}"${extra} value="${esc(value)}"></div>`;
+}
+const consentBox = id => `<label class="check"><input type="checkbox" id="${id}" ${dv(id, false) ? 'checked' : ''}><span>J'accepte que mes coordonnées et mes disponibilités soient utilisées par la direction du magasin pour la gestion des horaires.</span></label>`;
 function viewSetup() {
-  return `<div class="auth"><div class="auth-card"><div class="auth-brand"><span class="wm">MINISO</span><span class="wm-sub">Horaires · ${esc(C.store.code)} ${esc(C.store.name)}</span></div>
-    <h2>Configuration en cours</h2><p class="muted">L'application n'est pas encore reliée à sa base de données. Revenez bientôt.</p></div></div>`;
+  return authLayout(`<h1 class="auth-title">Bientôt prêt</h1><p class="auth-lead">L'application n'est pas encore reliée à sa base de données. Revenez un peu plus tard.</p>`);
 }
 function viewAuth() {
-  const v = S.authView;
-  const msg = S.msg ? `<div class="alert ${S.msg.kind}">${svg(S.msg.kind === 'ok' ? IC.check : IC.alert, 16)}<span>${esc(S.msg.text)}</span></div>` : '';
-  let body;
-  if (v === 'signup') body = `<form data-form="signup" class="auth-form" novalidate>
-      <div class="form-grid">
-        <div class="field"><label for="su-first">Prénom</label><input class="input" id="su-first" autocomplete="given-name" value="${esc(dv('su-first', ''))}"></div>
-        <div class="field"><label for="su-last">Nom</label><input class="input" id="su-last" autocomplete="family-name" value="${esc(dv('su-last', ''))}"></div>
-      </div>
-      <div class="field"><label for="su-email">Courriel</label><input class="input" id="su-email" type="email" inputmode="email" autocomplete="email" value="${esc(dv('su-email', ''))}"></div>
-      <div class="field"><label for="su-phone">Téléphone (facultatif)</label><input class="input" id="su-phone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(dv('su-phone', ''))}"></div>
-      <div class="field"><label for="su-pw">Mot de passe (8 caractères minimum)</label><input class="input" id="su-pw" type="password" autocomplete="new-password"></div>
-      <div class="field"><label for="su-pw2">Confirmer le mot de passe</label><input class="input" id="su-pw2" type="password" autocomplete="new-password"></div>
-      <label class="check"><input type="checkbox" id="su-consent" ${dv('su-consent', false) ? 'checked' : ''}><span>J'accepte que mes coordonnées et mes disponibilités soient utilisées par la direction du magasin pour la gestion des horaires.</span></label>
-      ${msg}
-      <button class="btn red block" type="submit">Créer mon compte</button>
-      <p class="fine">La direction du magasin doit approuver votre compte avant que vous puissiez voir l'horaire.</p>
-    </form>`;
-  else if (v === 'reset') body = `<form data-form="reset" class="auth-form" novalidate>
-      <p class="muted">Entrez votre courriel : vous recevrez un lien pour choisir un nouveau mot de passe.</p>
-      <div class="field"><label for="rs-email">Courriel</label><input class="input" id="rs-email" type="email" inputmode="email" autocomplete="email" value="${esc(dv('rs-email', dv('li-email', '')))}"></div>
-      ${msg}
-      <button class="btn red block" type="submit">Envoyer le lien</button>
-    </form>`;
-  else body = `<form data-form="login" class="auth-form" novalidate>
-      <div class="field"><label for="li-email">Courriel</label><input class="input" id="li-email" type="email" inputmode="email" autocomplete="username" value="${esc(dv('li-email', ''))}"></div>
-      <div class="field"><label for="li-pw">Mot de passe</label><input class="input" id="li-pw" type="password" autocomplete="current-password"></div>
-      ${msg}
-      <button class="btn red block" type="submit">Se connecter</button>
-      <button class="link" type="button" data-act="authView" data-v="reset">Mot de passe oublié ?</button>
-    </form>`;
-  return `<div class="auth"><div class="auth-card">
-      <div class="auth-brand"><span class="wm">MINISO</span><span class="wm-sub">Horaires · ${esc(C.store.code)} ${esc(C.store.name)}</span></div>
-      ${v === 'reset' ? `<button class="link" style="align-self:flex-start" data-act="authView" data-v="login">${svg(IC.left, 16)} Retour à la connexion</button><h2>Mot de passe oublié</h2>`
-      : `<div class="auth-tabs" role="group"><button data-act="authView" data-v="login" aria-pressed="${v === 'login'}">Connexion</button><button data-act="authView" data-v="signup" aria-pressed="${v === 'signup'}">Créer un compte</button></div>`}
-      ${body}
-    </div><p class="auth-foot">${svg(IC.lock, 13)} Accès réservé à l'équipe du magasin ${esc(C.store.code)}.</p></div>`;
+  const v = S.authView, email = String(dv('li-email', '')).trim();
+  if (v === 'signup') return authLayout(`
+    <h1 class="auth-title">Créer un compte</h1>
+    <p class="auth-lead">La direction du magasin approuve chaque compte avant l'accès à l'horaire.</p>
+    ${googleOn() ? `${googleBtn("S'inscrire avec Google")}<div class="or">ou avec votre courriel</div>` : ''}
+    <form data-form="signup" class="auth-form" novalidate>
+      <div class="line-2">${lineField('su-first', 'Prénom', 'text', 'given-name', dv('su-first', ''))}${lineField('su-last', 'Nom', 'text', 'family-name', dv('su-last', ''))}</div>
+      ${lineField('su-email', 'Adresse courriel', 'email', 'email', dv('su-email', ''))}
+      ${lineField('su-phone', 'Téléphone (facultatif)', 'tel', 'tel', dv('su-phone', ''))}
+      ${lineField('su-pw', 'Mot de passe (8 caractères minimum)', 'password', 'new-password', '')}
+      ${lineField('su-pw2', 'Confirmer le mot de passe', 'password', 'new-password', '')}
+      ${consentBox('su-consent')}
+      ${msgHtml()}
+      <button class="btn red btn-xl block" type="submit">Créer mon compte</button>
+    </form>
+    <div class="auth-alt"><span>Déjà un compte ?</span><button type="button" class="link-alt" data-act="authView" data-v="email">Se connecter</button></div>`);
+  if (v === 'reset') return authLayout(`
+    <button type="button" class="back-link" data-act="authView" data-v="${email ? 'password' : 'email'}">${svg(IC.left, 18)} Retour</button>
+    <h1 class="auth-title">Mot de passe oublié</h1>
+    <p class="auth-lead">Entrez votre courriel : vous recevrez un lien pour choisir un nouveau mot de passe.</p>
+    <form data-form="reset" class="auth-form" novalidate>
+      ${lineField('rs-email', 'Adresse courriel', 'email', 'email', dv('rs-email', email))}
+      ${msgHtml()}
+      <button class="btn red btn-xl block" type="submit">Envoyer le lien</button>
+    </form>`);
+  if (v === 'password' && email) return authLayout(`
+    <h1 class="auth-title">Connexion</h1>
+    <div class="who-chip"><span>${esc(email)}</span><button type="button" class="link-alt" data-act="authView" data-v="email">Modifier</button></div>
+    <form data-form="login" class="auth-form" novalidate>
+      <input class="sr" type="email" autocomplete="username" value="${esc(email)}" tabindex="-1" aria-hidden="true" readonly>
+      ${lineField('li-pw', 'Mot de passe', 'password', 'current-password', '')}
+      ${msgHtml()}
+      <button class="btn red btn-xl block" type="submit">Se connecter</button>
+    </form>
+    <button type="button" class="link-alt center" data-act="authView" data-v="reset">Mot de passe oublié ?</button>
+    ${googleOn() ? `<div class="or">ou</div>${googleBtn('Continuer avec Google')}` : ''}`);
+  return authLayout(`
+    <h1 class="auth-title">Connexion</h1>
+    <form data-form="email" class="auth-form" novalidate>
+      ${lineField('li-email', 'Adresse courriel', 'email', 'username', email)}
+      ${msgHtml()}
+      <button class="btn red btn-xl block" type="submit">Continuer</button>
+    </form>
+    ${googleOn() ? `<div class="or">ou continuer avec</div>${googleBtn('Continuer avec Google')}` : ''}
+    <div class="auth-alt"><button type="button" class="link-alt muted-link" data-act="authView" data-v="signup">Créer un nouveau compte</button></div>`);
 }
 function viewCompleteProfile() {
-  return `<section class="card center-card"><div class="big-ico">${svg(IC.me, 32)}</div><h1>Complétez votre profil</h1>
-    <form data-form="complete" class="auth-form" style="width:100%;text-align:left" novalidate>
-      <div class="form-grid">
-        <div class="field"><label for="cp-first">Prénom</label><input class="input" id="cp-first" value="${esc(dv('cp-first', ''))}"></div>
-        <div class="field"><label for="cp-last">Nom</label><input class="input" id="cp-last" value="${esc(dv('cp-last', ''))}"></div>
-      </div>
-      <div class="field"><label for="cp-phone">Téléphone (facultatif)</label><input class="input" id="cp-phone" type="tel" value="${esc(dv('cp-phone', ''))}"></div>
-      <label class="check"><input type="checkbox" id="cp-consent" ${dv('cp-consent', false) ? 'checked' : ''}><span>J'accepte que mes coordonnées et mes disponibilités soient utilisées par la direction du magasin pour la gestion des horaires.</span></label>
-      <button class="btn red block" type="submit">Continuer</button>
+  const dn = String(S.user.displayName || '').trim().split(/\s+/).filter(Boolean);
+  const f0 = dn[0] || '', l0 = dn.slice(1).join(' ');
+  const first = dv('cp-first', f0);
+  return authLayout(`
+    <h1 class="auth-title">Bienvenue${first ? ', ' + esc(first) : ''}</h1>
+    <p class="auth-lead">Complétez votre profil pour demander l'accès à l'horaire du magasin.</p>
+    <div class="who-chip"><span>${esc(S.user.email || '')}</span></div>
+    <form data-form="complete" class="auth-form" novalidate>
+      <div class="line-2">${lineField('cp-first', 'Prénom', 'text', 'given-name', first)}${lineField('cp-last', 'Nom', 'text', 'family-name', dv('cp-last', l0))}</div>
+      ${lineField('cp-phone', 'Téléphone (facultatif)', 'tel', 'tel', dv('cp-phone', ''))}
+      ${consentBox('cp-consent')}
+      <button class="btn red btn-xl block" type="submit">Demander l'accès</button>
     </form>
-    <button class="btn ghost" data-act="logout">${svg(IC.out, 16)} Se déconnecter</button></section>`;
+    <div class="auth-alt"><button type="button" class="link-alt muted-link" data-act="logout">Utiliser un autre compte</button></div>`);
 }
 function viewPending() {
   const p = S.profile || {}, blocked = p.status === 'refused' || p.status === 'inactive', owner = isOwnerEmail(S.user);
-  return `<section class="card center-card">
-    <div class="big-ico">${svg(blocked ? IC.lock : IC.clock, 32)}</div>
-    <h1>${blocked ? 'Accès désactivé' : `Merci, ${esc(p.firstName || '')} !`}</h1>
-    <p class="muted">${blocked ? "Votre compte n'a pas accès à l'horaire. Communiquez avec la direction du magasin."
+  return authLayout(`
+    <div class="big-ico">${svg(blocked ? IC.lock : IC.clock, 30)}</div>
+    <h1 class="auth-title">${blocked ? 'Accès désactivé' : `Merci, ${esc(p.firstName || '')} !`}</h1>
+    <p class="auth-lead">${blocked ? "Votre compte n'a pas accès à l'horaire. Communiquez avec la direction du magasin."
       : owner ? "Compte propriétaire : confirmez votre adresse courriel pour activer l'accès gérant."
         : "Votre compte est créé. La direction du magasin doit l'approuver avant que vous puissiez voir l'horaire. Cette page se mettra à jour toute seule."}</p>
     ${blocked ? '' : verifBlock()}
-    <button class="btn ghost" data-act="logout">${svg(IC.out, 16)} Se déconnecter</button></section>`;
+    <div class="auth-alt"><button type="button" class="link-alt muted-link" data-act="logout">Se déconnecter</button></div>`);
 }
 function verifBlock() {
   if (S.user.emailVerified) return `<div class="alert ok">${svg(IC.check, 16)}<span>Courriel confirmé : ${esc(S.user.email)}</span></div>`;
   return `<div class="alert warn">${svg(IC.alert, 16)}<span>Un courriel de confirmation a été envoyé à <b>${esc(S.user.email)}</b>. Ouvrez-le et touchez le lien (vérifiez aussi les courriels indésirables).</span></div>
-    <div class="row center"><button class="btn red" data-act="checkVerif">J'ai confirmé mon courriel</button><button class="btn" data-act="resendVerif">Renvoyer le courriel</button></div>`;
+    <div class="row"><button class="btn red" data-act="checkVerif">J'ai confirmé mon courriel</button><button class="btn" data-act="resendVerif">Renvoyer le courriel</button></div>`;
 }
 
 /* ----- Semaine ----- */
@@ -691,13 +721,13 @@ function viewProfile() {
         <div class="field"><label for="pf-phone">Téléphone</label><input class="input" id="pf-phone" type="tel" value="${esc(dv('pf-phone', c.phone || ''))}"></div>
         <button class="btn red span2" type="submit">Enregistrer</button>
       </form></section>
-    <section class="card"><div class="card-h"><h2>Changer mon mot de passe</h2></div>
+    ${!(S.user.providerData || []).some(x => x.providerId === 'password') ? `<section class="card"><div class="card-b"><div class="row">${GOOGLE_G}<span>Connecté avec votre compte Google. Le mot de passe se gère chez Google.</span></div></div></section>` : `<section class="card"><div class="card-h"><h2>Changer mon mot de passe</h2></div>
       <form class="card-b form-grid" data-form="password" novalidate>
         <div class="field span2"><label for="pw-cur">Mot de passe actuel</label><input class="input" id="pw-cur" type="password" autocomplete="current-password"></div>
         <div class="field"><label for="pw-new">Nouveau mot de passe</label><input class="input" id="pw-new" type="password" autocomplete="new-password"></div>
         <div class="field"><label for="pw-new2">Confirmer</label><input class="input" id="pw-new2" type="password" autocomplete="new-password"></div>
         <button class="btn span2" type="submit">${svg(IC.lock, 16)} Changer le mot de passe</button>
-      </form></section>
+      </form></section>`}
     ${mgr ? `<section class="card"><div class="card-h"><h2>Réglages du magasin</h2></div><div class="card-b">
       <b>Postes</b>
       ${sd.positions.map((x, i) => `<div class="set-row"><input type="color" value="${esc(x.color)}" data-set="positions.${i}.color" aria-label="Couleur"><input class="input" value="${esc(x.name)}" data-set="positions.${i}.name" aria-label="Nom du poste"><button class="btn sm ghost" data-act="rmSet" data-v="positions.${i}" aria-label="Retirer">${svg(IC.trash, 16)}</button></div>`).join('')}
@@ -813,7 +843,7 @@ function feedBody() {
 
 /* ---------------- Actions ---------------- */
 const AUTH_ERR = {
-  'auth/email-already-in-use': 'Un compte existe déjà avec ce courriel. Connectez-vous ou utilisez « Mot de passe oublié ».',
+  'auth/email-already-in-use': 'Un compte existe déjà avec ce courriel. Connectez-vous (ou utilisez « Continuer avec Google »).',
   'auth/invalid-email': 'Adresse courriel invalide.',
   'auth/weak-password': 'Mot de passe trop faible : 8 caractères minimum.',
   'auth/invalid-credential': 'Courriel ou mot de passe incorrect.',
@@ -825,7 +855,11 @@ const AUTH_ERR = {
   'auth/network-request-failed': 'Pas de connexion Internet.',
   'auth/user-disabled': 'Ce compte a été désactivé.',
   'auth/requires-recent-login': 'Par sécurité, déconnectez-vous puis reconnectez-vous avant de réessayer.',
-  'auth/operation-not-allowed': 'La connexion par courriel n\'est pas encore activée pour ce magasin.'
+  'auth/operation-not-allowed': 'Ce mode de connexion n\'est pas encore activé pour ce magasin.',
+  'auth/account-exists-with-different-credential': 'Ce courriel est déjà utilisé avec un mot de passe. Connectez-vous avec votre courriel et votre mot de passe.',
+  'auth/unauthorized-domain': 'La connexion Google n\'est pas encore autorisée pour cette adresse.',
+  'auth/popup-blocked': 'La fenêtre Google a été bloquée. Réessayez.',
+  'auth/web-storage-unsupported': 'Activez les cookies de ce site pour vous connecter.'
 };
 const authErr = e => AUTH_ERR[e && e.code] || 'Une erreur est survenue. Réessayez.';
 function showMsg(kind, text) { S.msg = { kind, text }; render(true); }
@@ -835,11 +869,36 @@ async function withContinue(fn) {
 }
 const sendVerif = user => withContinue(s => sendEmailVerification(user, s));
 
+function doEmailStep() {
+  const email = val('li-email');
+  if (!EMAIL_RE.test(email)) return showMsg('err', 'Entrez une adresse courriel valide.');
+  S.draft['li-email'] = email; S.msg = null; S.authView = 'password'; render(true);
+  setTimeout(() => { const pw = $('#li-pw'); if (pw) pw.focus(); }, 60);
+}
 async function doLogin() {
-  const email = val('li-email'), pw = $('#li-pw').value;
-  if (!email || !pw) return showMsg('err', 'Entrez votre courriel et votre mot de passe.');
+  const email = String(dv('li-email', '')).trim(), pw = $('#li-pw').value;
+  if (!email) { S.authView = 'email'; return render(true); }
+  if (!pw) return showMsg('err', 'Entrez votre mot de passe.');
   try { S.msg = null; await signInWithEmailAndPassword(auth, email, pw); clearDraft('li-'); }
-  catch (e) { showMsg('err', authErr(e)); }
+  catch (e) {
+    const bad = ['auth/invalid-credential', 'auth/invalid-login-credentials', 'auth/wrong-password', 'auth/user-not-found'].includes(e.code);
+    showMsg('err', authErr(e) + (bad && googleOn() ? ' Inscrit avec Google ? Utilisez « Continuer avec Google ».' : ''));
+  }
+}
+const isStandalone = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+async function doGoogle() {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  S.msg = null;
+  try {
+    // Application installée sur l'écran d'accueil : redirection (les fenêtres surgissantes y sont peu fiables)
+    if (isStandalone()) await signInWithRedirect(auth, provider);
+    else await signInWithPopup(auth, provider);
+  } catch (e) {
+    if (e.code === 'auth/popup-blocked') return signInWithRedirect(auth, provider);
+    if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
+    showMsg('err', authErr(e));
+  }
 }
 async function doReset() {
   const email = val('rs-email');
@@ -1049,6 +1108,7 @@ document.addEventListener('click', async e => {
     switch (act) {
       case 'nav': S.view = el.dataset.v; ls.set('view', S.view); S.confirm = null; S.setDraft = null; render(true); window.scrollTo(0, 0); break;
       case 'authView': S.authView = el.dataset.v; S.msg = null; render(true); break;
+      case 'google': await doGoogle(); break;
       case 'logout': S.view = null; await signOut(auth); break;
       case 'checkVerif': await checkVerif(); break;
       case 'resendVerif': await sendVerif(S.user); toast('Courriel de confirmation renvoyé'); break;
@@ -1100,6 +1160,7 @@ document.addEventListener('submit', async e => {
   const btn = f.querySelector('[type="submit"]'); if (btn) btn.disabled = true;
   try {
     switch (f.dataset.form) {
+      case 'email': doEmailStep(); break;
       case 'login': await doLogin(); break;
       case 'signup': await doSignup(); break;
       case 'reset': await doReset(); break;

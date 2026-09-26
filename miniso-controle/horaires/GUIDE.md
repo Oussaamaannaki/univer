@@ -19,19 +19,29 @@ Faites ces étapes sur l'ordinateur, dans une **fenêtre privée** connectée à
 
 Le forfait gratuit (Spark) suffit largement. Ne donnez aucune carte de crédit.
 
-## Étape 2 — Activer les comptes (courriel + mot de passe)
+## Étape 2 — Activer les comptes (courriel et Google)
 
-1. Dans le menu de gauche : **Créer** (ou *Build*) → **Authentication**.
-2. Cliquez sur **Commencer**.
-3. Dans l'onglet **Mode de connexion**, cliquez sur **Adresse e-mail/Mot de passe**.
-4. Activez le **premier** interrupteur (Adresse e-mail/Mot de passe). Laissez « Lien envoyé par e-mail » désactivé.
-5. Cliquez sur **Enregistrer**.
-6. Onglet **Paramètres** → **Domaines autorisés** → **Ajouter un domaine** → tapez `miniso-cah5-granby.vercel.app` → **Ajouter**.
-   (Cela permet aux liens des courriels « mot de passe oublié » de ramener vers l'application.)
+**Lien direct :** https://console.firebase.google.com/project/_/authentication/providers
+(Firebase vous demande de choisir le projet : cliquez sur `miniso-horaires-cah5`.)
+
+Sinon, par le menu : dans la colonne de gauche, ouvrez **Catégories de produits** → **Créer** (ou *Build*) → **Authentication**.
+
+1. Si un bouton **Commencer** (*Get started*) apparaît, cliquez dessus.
+2. Vous êtes dans l'onglet **Mode de connexion** (*Sign-in method*), qui affiche une liste de fournisseurs.
+3. **Courriel** : cliquez sur **Adresse e-mail/Mot de passe** (*Email/Password*), activez le **premier** interrupteur seulement, puis **Enregistrer**.
+4. **Google** : cliquez sur **Ajouter un fournisseur** (*Add new provider*) → **Google** → activez l'interrupteur.
+   - **Nom public du projet** : `MINISO Horaires CAH5`. C'est ce qu'affichera Google aux employés.
+   - **Adresse e-mail d'assistance** : choisissez votre Gmail.
+   - Cliquez sur **Enregistrer**.
+5. Onglet **Paramètres** (*Settings*) → **Domaines autorisés** (*Authorized domains*) → **Ajouter un domaine** → `miniso-cah5-granby.vercel.app` → **Ajouter**.
+
+À la fin, la liste des fournisseurs doit afficher **Adresse e-mail/Mot de passe : Activé** et **Google : Activé**.
 
 ## Étape 3 — Créer la base de données
 
-1. Menu de gauche : **Créer** → **Firestore Database**.
+**Lien direct :** https://console.firebase.google.com/project/_/firestore
+
+1. Si vous passez par le menu : **Créer** → **Firestore Database**.
 2. Cliquez sur **Créer une base de données**.
 3. Si on vous demande une édition, choisissez **Standard**.
 4. **Emplacement** : choisissez **northamerica-northeast1 (Montréal)**. Les données de vos employés restent ainsi au Québec. Cet emplacement ne peut plus être changé ensuite.
@@ -48,7 +58,9 @@ Ces règles décident qui voit quoi : un employé ne voit jamais le taux horaire
 
 ## Étape 5 — Relier l'application
 
-1. En haut à gauche, cliquez sur l'engrenage ⚙️ à côté de « Vue d'ensemble du projet » → **Paramètres du projet**.
+**Lien direct :** https://console.firebase.google.com/project/_/settings/general
+
+1. Sinon : en haut à gauche, cliquez sur l'engrenage ⚙️ à côté de « Vue d'ensemble du projet » → **Paramètres du projet**.
 2. Descendez jusqu'à **Vos applications**, puis cliquez sur l'icône **Web** `</>`.
 3. Surnom de l'application : `Horaires CAH5`. Ne cochez **pas** Firebase Hosting. Cliquez sur **Enregistrer l'application**.
 4. Un bloc de code apparaît, qui contient `const firebaseConfig = { apiKey: "...", authDomain: "...", ... }`.
@@ -63,8 +75,8 @@ Je les ajoute à l'application et je la republie : c'est en ligne en moins d'une
 ## Étape 6 — Premier démarrage (après ma confirmation)
 
 1. Ouvrez **https://miniso-cah5-granby.vercel.app/horaires/**.
-2. **Créer un compte** avec **annakioussama99@gmail.com**. Ce courriel est reconnu comme **propriétaire**.
-3. Ouvrez le courriel de confirmation (vérifiez les courriels indésirables), cliquez sur le lien, puis revenez sur l'application et appuyez sur **J'ai confirmé mon courriel**. Vous obtenez l'accès gérant.
+2. Appuyez sur **Continuer avec Google** et choisissez **annakioussama99@gmail.com**. Ce compte est reconnu comme **propriétaire** et obtient tout de suite l'accès gérant : bâtir, modifier et publier l'horaire, approuver les comptes, les congés et les échanges.
+3. (Vous pouvez aussi créer un compte avec ce courriel et un mot de passe : il faudra alors confirmer le courriel reçu.)
 4. Onglet **Compte** → **Réglages du magasin** : vérifiez les postes (Caisse, Plancher…) et les quarts types (Ouverture 9 h – 17 h…) selon les heures des Galeries de Granby. Cliquez sur **Enregistrer les réglages**.
 5. Onglet **Équipe** → **Copier** le lien d'inscription, puis envoyez-le à l'équipe (texto, Messenger, courriel du magasin).
 6. Chaque employé crée son compte. Vous l'approuvez dans **Équipe**, avec son poste et son taux horaire.
